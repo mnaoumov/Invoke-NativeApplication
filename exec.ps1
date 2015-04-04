@@ -1,27 +1,20 @@
-function exec
+function Invoke-NativeApplication
 {
     param
     (
         [ScriptBlock] $ScriptBlock,
-        [string] $StderrPrefix = "",
         [int[]] $AllowedExitCodes = @(0)
     )
- 
-    $backupErrorActionPreference = $script:ErrorActionPreference
- 
-    $script:ErrorActionPreference = "Continue"
+
+    $backupErrorActionPreference = $ErrorActionPreference
+
+    $ErrorActionPreference = "Continue"
     try
     {
         & $ScriptBlock 2>&1 | ForEach-Object -Process `
             {
-                if ($_ -is [System.Management.Automation.ErrorRecord])
-                {
-                    "$StderrPrefix$_"
-                }
-                else
-                {
-                    "$_"
-                }
+                $isError = $_ -is [System.Management.Automation.ErrorRecord]
+                "$_" | Add-Member -Name IsError -MemberType NoteProperty -Value $isError -PassThru
             }
         if ($AllowedExitCodes -notcontains $LASTEXITCODE)
         {
@@ -30,6 +23,20 @@ function exec
     }
     finally
     {
-        $script:ErrorActionPreference = $backupErrorActionPreference
+        $ErrorActionPreference = $backupErrorActionPreference
     }
 }
+
+function Invoke-NativeApplicationSafe
+{
+    param
+    (
+        [ScriptBlock] $ScriptBlock
+    )
+
+    Invoke-NativeApplication -ScriptBlock $ScriptBlock -AllowedExitCodes (0..255) | `
+        Where-Object -FilterScript { -not $_.IsError }
+}
+
+Set-Alias -Name exec -Value Invoke-NativeApplication
+Set-Alias -Name safeexec -Value Invoke-NativeApplicationSafe
