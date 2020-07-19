@@ -2,9 +2,10 @@ function Invoke-NativeApplication
 {
     param
     (
-        [ScriptBlock] $ScriptBlock,
-        [int[]] $AllowedExitCodes = @(0),
-        [switch] $IgnoreExitCode
+        [Parameter(Position=0)][ScriptBlock] $ScriptBlock,
+        [Parameter(Position=1)][HashTable] $ArgumentList,
+        [Parameter()][int[]] $AllowedExitCodes = @(0),
+        [Parameter()][switch] $IgnoreExitCode
     )
 
     $backupErrorActionPreference = $ErrorActionPreference
@@ -12,13 +13,14 @@ function Invoke-NativeApplication
     $ErrorActionPreference = "Continue"
     try
     {
+        Write-Verbose 'Executing native application with parameters: {0}' -f  [PSCustomObject] $ArgumentList
         if (Test-CalledFromPrompt)
         {
-            $wrapperScriptBlock = { & $ScriptBlock }
+            $wrapperScriptBlock = { & $ScriptBlock @ArgumentList }
         }
         else
         {
-            $wrapperScriptBlock = { & $ScriptBlock 2>&1 }
+            $wrapperScriptBlock = { & $ScriptBlock @ArgumentList 2>&1 }
         }
 
         & $wrapperScriptBlock | ForEach-Object -Process `
@@ -28,7 +30,7 @@ function Invoke-NativeApplication
             }
         if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
         {
-            throw "Execution failed with exit code $LASTEXITCODE"
+            throw "Native application with parameters {0} failed with exit code $LASTEXITCODE" -f [PSCustomObject] $ArgumentList
         }
     }
     finally
