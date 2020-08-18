@@ -30,7 +30,8 @@ function Invoke-NativeApplication
             }
         if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
         {
-            throw "Native application with parameters {0} failed with exit code $LASTEXITCODE" -f [PSCustomObject] $ArgumentList
+            throw 'Native application with parameters {0} failed at {1} with exit code {2}' -f
+                ([PSCustomObject] $ArgumentList), (Get-PSCallStack -ErrorAction:SilentlyContinue)[1].Location, $LASTEXITCODE
         }
     }
     finally
@@ -43,10 +44,11 @@ function Invoke-NativeApplicationSafe
 {
     param
     (
-        [ScriptBlock] $ScriptBlock
+        [Parameter(Position=0)][ScriptBlock] $ScriptBlock,
+        [Parameter(Position=1)][HashTable] $ArgumentList
     )
 
-    Invoke-NativeApplication -ScriptBlock $ScriptBlock -IgnoreExitCode | `
+    Invoke-NativeApplication -ScriptBlock:$ScriptBlock -IgnoreExitCode -ArgumentList:$ArgumentList| `
         Where-Object -FilterScript { -not $_.IsError }
 }
 
