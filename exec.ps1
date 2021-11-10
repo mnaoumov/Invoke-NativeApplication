@@ -13,7 +13,7 @@ function Invoke-NativeApplication
     $ErrorActionPreference = "Continue"
     try
     {
-        Write-Verbose ('Executing native application with parameters: {0}' -f [PSCustomObject] $ArgumentList)
+        Write-Verbose ('Executing native application {0} with parameters: {1}' -f $ScriptBlock, ([PSCustomObject] $ArgumentList))
         if (Test-CalledFromPrompt)
         {
             $wrapperScriptBlock = { & $ScriptBlock @ArgumentList }
@@ -30,8 +30,8 @@ function Invoke-NativeApplication
             }
         if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
         {
-            throw ('Native application with parameters {0} failed at {1} with exit code {2}' -f
-                ([PSCustomObject] $ArgumentList), (Get-PSCallStack -ErrorAction:SilentlyContinue)[1].Location, $LASTEXITCODE)
+            throw ('Native application {0} with parameters {1} failed at {2} with exit code {3}' -f
+                $ScriptBlock, ([PSCustomObject] $ArgumentList), (Get-PSCallStack -ErrorAction:SilentlyContinue)[1].Location, $LASTEXITCODE)
         }
     }
     finally
