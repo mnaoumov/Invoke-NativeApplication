@@ -23,11 +23,7 @@ function Invoke-NativeApplication
             $wrapperScriptBlock = { & $ScriptBlock @ArgumentList 2>&1 }
         }
 
-        & $wrapperScriptBlock | ForEach-Object -Process `
-            {
-                $isError = $_ -is [System.Management.Automation.ErrorRecord]
-                "$_" | Add-Member -Name IsError -MemberType NoteProperty -Value $isError -PassThru
-            }
+        & $wrapperScriptBlock | ForEach-Object -Process { ConvertTo-StringWithError $_ }
         if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
         {
             throw ('Native application {0} with parameters {1} failed at {2} with exit code {3}' -f
@@ -38,6 +34,18 @@ function Invoke-NativeApplication
     {
         $ErrorActionPreference = $backupErrorActionPreference
     }
+}
+
+function ConvertTo-StringWithError($obj) {
+    $isError = $obj -is [System.Management.Automation.ErrorRecord]
+
+    if ($isError) {
+        $message = $obj.Exception.Message
+    } else {
+        $message = $obj
+    }
+
+    $message | Add-Member -Name IsError -MemberType NoteProperty -Value $isError -PassThru
 }
 
 function Invoke-NativeApplicationSafe
