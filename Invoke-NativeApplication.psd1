@@ -9,6 +9,13 @@
 
     FormatsToProcess  = @('Invoke-NativeApplication.format.ps1xml')
 
+    FileList          = @(
+        'Invoke-NativeApplication.format.ps1xml'
+        'Invoke-NativeApplication.psd1'
+        'Invoke-NativeApplication.psm1'
+        'NativeApplicationOutput.cs'
+    )
+
     FunctionsToExport = @(
         'Invoke-NativeApplication'
         'Invoke-NativeApplicationSafe'
