@@ -1,5 +1,9 @@
 # Invoke-NativeApplication
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/mnaoumov)
+[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/Invoke-NativeApplication)](https://www.powershellgallery.com/packages/Invoke-NativeApplication)
+[![GitHub release](https://img.shields.io/github/v/release/mnaoumov/Invoke-NativeApplication)](https://github.com/mnaoumov/Invoke-NativeApplication/releases)
+
 A PowerShell module for invoking native applications with proper error messages and exit code handling.
 
 Invocation of native applications in PowerShell seems too easy but actually it is not. For more explanation see:
@@ -46,7 +50,7 @@ Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes @(0, 1)
 # Range of allowed exit codes
 Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes (0..3)
 
-# Combined range and individual codes
+# Combined ranges and individual codes
 Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes ((0..3) + (8, 10) + (20..30))
 
 # Capture all output without throwing, then filter for STDERR lines
@@ -87,6 +91,14 @@ $result | Where-Object { $_.IsError }
 
 - PowerShell 3.0 or later
 
+## Support
+
+<!-- markdownlint-disable MD033 -->
+
+<a href="https://www.buymeacoffee.com/mnaoumov" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="60" width="217"></a>
+
+<!-- markdownlint-enable MD033 -->
+
 ## License
 
-[MIT](LICENSE.md)
+© [Michael Naumov](https://github.com/mnaoumov/)
