@@ -41,7 +41,7 @@ Alias: `exec`
 Invoke-NativeApplication { git status }
 
 # Treat robocopy exit codes 0-3 as successful
-Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes @(0, 1, 2, 3)
+Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes (0..3)
 
 # Capture all output without throwing, then filter for STDERR lines
 $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode

@@ -33,7 +33,7 @@ Add-Type -Path $csPath
     Runs 'git status' and throws if git returns a non-zero exit code.
 
 .EXAMPLE
-    Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes @(0, 1, 2, 3)
+    Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes (0..3)
 
     Runs robocopy and treats exit codes 0-3 as successful (robocopy uses
     non-zero exit codes for informational purposes).
