@@ -47,7 +47,8 @@ Add-Type -Path $csPath
 
 .OUTPUTS
     NativeApplicationOutput
-    A string-like object with an additional IsError property.
+    One object per output line. Each behaves like a string but carries
+    an IsError property indicating whether it originated from STDERR.
 
 .LINK
     https://mnaoumov.wordpress.com/2015/01/11/execution-of-external-commands-in-powershell-done-right/
@@ -129,7 +130,8 @@ function Invoke-NativeApplication
 
 .OUTPUTS
     NativeApplicationOutput
-    A string-like object with an additional IsError property (always False).
+    One object per STDOUT line. Each behaves like a string with IsError
+    always set to False (STDERR lines are filtered out).
 #>
 function Invoke-NativeApplicationSafe
 {
