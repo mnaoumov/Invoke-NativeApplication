@@ -6,10 +6,7 @@
 
 A PowerShell module for invoking native applications with proper error messages and exit code handling.
 
-Invocation of native applications in PowerShell seems too easy but actually it is not. For more explanation see:
-
-- https://mnaoumov.wordpress.com/2015/01/11/execution-of-external-commands-in-powershell-done-right/
-- https://mnaoumov.wordpress.com/2015/03/31/execution-of-external-commands-native-applications-in-powershell-done-right-part-2/
+Invocation of native applications in PowerShell seems too easy but actually it is not. For more explanation see: [Execution of external commands in PowerShell done right](https://mnaoumov.wordpress.com/2015/01/11/execution-of-external-commands-in-powershell-done-right/).
 
 ## Installation
 
