@@ -33,10 +33,19 @@ Add-Type -Path $csPath
     Runs 'git status' and throws if git returns a non-zero exit code.
 
 .EXAMPLE
+    Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes @(0, 1)
+
+    Treats exit codes 0 and 1 as successful.
+
+.EXAMPLE
     Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes (0..3)
 
-    Runs robocopy and treats exit codes 0-3 as successful (robocopy uses
-    non-zero exit codes for informational purposes).
+    Treats exit codes 0 through 3 as successful using the range operator.
+
+.EXAMPLE
+    Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes ((0..3) + (8, 10) + (20..30))
+
+    Combines ranges with individual codes. Treats 0-3, 8, 10, and 20-30 as successful.
 
 .EXAMPLE
     $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode
