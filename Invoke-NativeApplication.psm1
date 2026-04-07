@@ -50,6 +50,9 @@ Add-Type -Path $csPath
     One object per output line. Each behaves like a string but carries
     an IsError property indicating whether it originated from STDERR.
 
+.NOTES
+    Alias: exec
+
 .LINK
     https://mnaoumov.wordpress.com/2015/01/11/execution-of-external-commands-in-powershell-done-right/
 
@@ -132,6 +135,9 @@ function Invoke-NativeApplication
     NativeApplicationOutput
     One object per STDOUT line. Each behaves like a string with IsError
     always set to False (STDERR lines are filtered out).
+
+.NOTES
+    Alias: safeexec
 #>
 function Invoke-NativeApplicationSafe
 {
