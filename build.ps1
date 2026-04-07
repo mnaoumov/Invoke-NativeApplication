@@ -5,19 +5,18 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 trap { throw $Error[0] }
 
-$requiredPesterVersion = '5.7.1'
-
-$pester = Get-Module -Name Pester -ListAvailable |
-    Where-Object -FilterScript { $_.Version -ge [version]$requiredPesterVersion } |
-    Sort-Object -Property Version -Descending |
-    Select-Object -First 1
-
-if (-not $pester)
+# Bootstrap PSDepend
+if (-not (Get-Module -Name PSDepend -ListAvailable))
 {
-    Write-Host "Installing Pester $requiredPesterVersion..."
-    Install-Module -Name Pester -MinimumVersion $requiredPesterVersion -Force -Scope CurrentUser -SkipPublisherCheck
+    Write-Host 'Installing PSDepend...'
+    Install-Module -Name PSDepend -Force -Scope CurrentUser
 }
 
+# Install dependencies from requirements.psd1
+Write-Host 'Installing dependencies...'
+Invoke-PSDepend -Path "$PSScriptRoot/requirements.psd1" -Install -Import -Force
+
+# Run tests
 Write-Host 'Running tests...'
 $result = Invoke-Pester -Path $PSScriptRoot -Output Detailed -PassThru
 
