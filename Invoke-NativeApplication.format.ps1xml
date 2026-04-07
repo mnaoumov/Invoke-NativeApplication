@@ -2,9 +2,9 @@
 <Configuration>
   <ViewDefinitions>
     <View>
-      <Name>NativeApplicationOutput</Name>
+      <Name>InvokeNativeApplication.OutputLine</Name>
       <ViewSelectedBy>
-        <TypeName>NativeApplicationOutput</TypeName>
+        <TypeName>InvokeNativeApplication.OutputLine</TypeName>
       </ViewSelectedBy>
       <CustomControl>
         <CustomEntries>

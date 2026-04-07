@@ -2,16 +2,16 @@ BeforeAll {
     Import-Module "$PSScriptRoot/Invoke-NativeApplication.psd1" -Force
 }
 
-Describe 'NativeApplicationOutput' {
+Describe 'InvokeNativeApplication.OutputLine' {
     Context 'Constructor' {
         It 'stores the message and IsError flag' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'hello', $true
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'hello', $true
             $output.ToString() | Should -Be 'hello'
             $output.IsError | Should -BeTrue
         }
 
         It 'defaults to empty string when value is null' {
-            $output = New-Object NativeApplicationOutput -ArgumentList $null, $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList $null, $false
             $output.ToString() | Should -Be ''
             $output.Length | Should -Be 0
         }
@@ -19,7 +19,7 @@ Describe 'NativeApplicationOutput' {
 
     Context 'String behavior' {
         BeforeAll {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'Hello, World!', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'Hello, World!', $false
         }
 
         It 'returns correct Length' {
@@ -87,14 +87,14 @@ Describe 'NativeApplicationOutput' {
         }
 
         It 'supports Trim, TrimStart, TrimEnd' {
-            $padded = New-Object NativeApplicationOutput -ArgumentList '  test  ', $false
+            $padded = New-Object InvokeNativeApplication.OutputLine -ArgumentList '  test  ', $false
             $padded.Trim() | Should -Be 'test'
             $padded.TrimStart() | Should -Be 'test  '
             $padded.TrimEnd() | Should -Be '  test'
         }
 
         It 'supports PadLeft and PadRight' {
-            $short = New-Object NativeApplicationOutput -ArgumentList 'hi', $false
+            $short = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'hi', $false
             $short.PadLeft(5) | Should -Be '   hi'
             $short.PadRight(5) | Should -Be 'hi   '
             $short.PadLeft(5, [char]'*') | Should -Be '***hi'
@@ -126,76 +126,76 @@ Describe 'NativeApplicationOutput' {
 
     Context 'ToString and string conversion' {
         It 'ToString returns the inner value' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             $output.ToString() | Should -Be 'test'
         }
 
         It 'implicit conversion to string works' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             [string]$s = $output
             $s | Should -Be 'test'
             $s | Should -BeOfType [string]
         }
 
         It 'string interpolation works' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'world', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'world', $false
             "hello $output" | Should -Be 'hello world'
         }
     }
 
     Context 'Equality and comparison' {
         It 'Equals returns true for same string value' {
-            $a = New-Object NativeApplicationOutput -ArgumentList 'test', $false
-            $b = New-Object NativeApplicationOutput -ArgumentList 'test', $true
+            $a = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
+            $b = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $true
             $a.Equals($b) | Should -BeTrue
         }
 
         It 'Equals returns true for matching string' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             $output.Equals('test') | Should -BeTrue
             $output.Equals('other') | Should -BeFalse
         }
 
         It 'Equals with StringComparison works' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'TEST', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'TEST', $false
             $output.Equals('test', [StringComparison]::OrdinalIgnoreCase) | Should -BeTrue
             $output.Equals('test', [StringComparison]::Ordinal) | Should -BeFalse
         }
 
         It 'GetHashCode matches string hash code' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             $output.GetHashCode() | Should -Be 'test'.GetHashCode()
         }
 
         It 'CompareTo string works' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'beta', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'beta', $false
             $output.CompareTo('alpha') | Should -BeGreaterThan 0
             $output.CompareTo('beta') | Should -Be 0
             $output.CompareTo('gamma') | Should -BeLessThan 0
         }
 
-        It 'CompareTo NativeApplicationOutput works' {
-            $a = New-Object NativeApplicationOutput -ArgumentList 'alpha', $false
-            $b = New-Object NativeApplicationOutput -ArgumentList 'beta', $false
+        It 'CompareTo InvokeNativeApplication.OutputLine works' {
+            $a = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'alpha', $false
+            $b = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'beta', $false
             $a.CompareTo($b) | Should -BeLessThan 0
         }
     }
 
     Context 'IsError property' {
         It 'IsError is true for error output' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'error msg', $true
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'error msg', $true
             $output.IsError | Should -BeTrue
         }
 
         It 'IsError is false for normal output' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'normal', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'normal', $false
             $output.IsError | Should -BeFalse
         }
     }
 
     Context 'Clone' {
         It 'returns a clone of the inner string' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             $clone = $output.Clone()
             $clone | Should -Be 'test'
         }
@@ -203,7 +203,7 @@ Describe 'NativeApplicationOutput' {
 
     Context 'Normalize' {
         It 'returns normalized string' {
-            $output = New-Object NativeApplicationOutput -ArgumentList 'test', $false
+            $output = New-Object InvokeNativeApplication.OutputLine -ArgumentList 'test', $false
             $output.IsNormalized() | Should -BeTrue
             $normalized = $output.Normalize()
             $normalized | Should -Be 'test'

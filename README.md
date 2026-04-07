@@ -58,9 +58,9 @@ Invoke-NativeApplicationSafe { git branch }
 
 Alias: `safeexec`
 
-## Output Type: NativeApplicationOutput
+## Output Type: InvokeNativeApplication.OutputLine
 
-Both functions return `NativeApplicationOutput` objects. These behave like strings (all `System.String` methods are available with tab-completion) but carry an additional `IsError` property indicating whether the line originated from STDERR.
+Both functions return `InvokeNativeApplication.OutputLine` objects. These behave like strings (all `System.String` methods are available with tab-completion) but carry an additional `IsError` property indicating whether the line originated from STDERR.
 
 ```powershell
 $result = Invoke-NativeApplication { git status }

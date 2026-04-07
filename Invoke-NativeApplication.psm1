@@ -1,4 +1,4 @@
-$csPath = Join-Path -Path $PSScriptRoot -ChildPath 'NativeApplicationOutput.cs'
+$csPath = Join-Path -Path $PSScriptRoot -ChildPath 'OutputLine.cs'
 Add-Type -Path $csPath
 
 <#
@@ -8,7 +8,7 @@ Add-Type -Path $csPath
 .DESCRIPTION
     Executes a native application (external command) via a ScriptBlock, captures both
     STDOUT and STDERR streams, and validates the process exit code. Each output line is
-    returned as a NativeApplicationOutput object that behaves like a string but carries
+    returned as a InvokeNativeApplication.OutputLine object that behaves like a string but carries
     an IsError property indicating whether it originated from STDERR.
 
     When called from the PowerShell prompt, STDERR is not redirected so that it displays
@@ -46,7 +46,7 @@ Add-Type -Path $csPath
     for lines that came from STDERR.
 
 .OUTPUTS
-    NativeApplicationOutput
+    InvokeNativeApplication.OutputLine
     One object per output line. Each behaves like a string but carries
     an IsError property indicating whether it originated from STDERR.
 
@@ -96,7 +96,7 @@ function Invoke-NativeApplication
                 $message = "$_"
             }
 
-            New-Object -TypeName NativeApplicationOutput -ArgumentList $message, $isError
+            New-Object -TypeName InvokeNativeApplication.OutputLine -ArgumentList $message, $isError
         }
 
         if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
@@ -132,7 +132,7 @@ function Invoke-NativeApplication
     Gets the list of git branches, ignoring any STDERR output and exit code.
 
 .OUTPUTS
-    NativeApplicationOutput
+    InvokeNativeApplication.OutputLine
     One object per STDOUT line. Each behaves like a string with IsError
     always set to False (STDERR lines are filtered out).
 

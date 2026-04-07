@@ -4,10 +4,10 @@ BeforeAll {
 
 Describe 'Invoke-NativeApplication' {
     Context 'successful execution' {
-        It 'returns output as NativeApplicationOutput objects' {
+        It 'returns output as InvokeNativeApplication.OutputLine objects' {
             $result = @(Invoke-NativeApplication { cmd /c echo hello })
             $result | Should -HaveCount 1
-            $result[0] | Should -BeOfType [NativeApplicationOutput]
+            $result[0] | Should -BeOfType [InvokeNativeApplication.OutputLine]
             $result[0].ToString() | Should -Be 'hello'
             $result[0].IsError | Should -BeFalse
         }

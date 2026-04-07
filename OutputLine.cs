@@ -2,6 +2,9 @@ using System;
 using System.Globalization;
 using System.Text;
 
+namespace InvokeNativeApplication
+{
+
 /// <summary>
 /// Represents output from a native application invocation.
 /// Wraps a string value with an <see cref="IsError"/> property that indicates
@@ -10,7 +13,7 @@ using System.Text;
 /// so this type can be used as a drop-in replacement for <see cref="string"/>
 /// while preserving the error metadata.
 /// </summary>
-public class NativeApplicationOutput : IComparable, IComparable<string>, IEquatable<string>
+public class OutputLine : IComparable, IComparable<string>, IEquatable<string>
 {
     private readonly string _value;
 
@@ -32,24 +35,24 @@ public class NativeApplicationOutput : IComparable, IComparable<string>, IEquata
     public char this[int index] { get { return _value[index]; } }
 
     /// <summary>
-    /// Initializes a new instance of <see cref="NativeApplicationOutput"/>.
+    /// Initializes a new instance of <see cref="OutputLine"/>.
     /// </summary>
     /// <param name="value">The string content of the output line.</param>
     /// <param name="isError">
     /// <c>true</c> if the line originated from STDERR; otherwise, <c>false</c>.
     /// </param>
-    public NativeApplicationOutput(string value, bool isError)
+    public OutputLine(string value, bool isError)
     {
         _value = value ?? string.Empty;
         IsError = isError;
     }
 
     /// <summary>
-    /// Implicitly converts a <see cref="NativeApplicationOutput"/> to a <see cref="string"/>.
+    /// Implicitly converts a <see cref="OutputLine"/> to a <see cref="string"/>.
     /// </summary>
     /// <param name="output">The output to convert.</param>
     /// <returns>The underlying string value, or <c>null</c> if <paramref name="output"/> is <c>null</c>.</returns>
-    public static implicit operator string(NativeApplicationOutput output)
+    public static implicit operator string(OutputLine output)
     {
         return output == null ? null : output._value;
     }
@@ -70,18 +73,27 @@ public class NativeApplicationOutput : IComparable, IComparable<string>, IEquata
     /// <inheritdoc/>
     public override bool Equals(object obj)
     {
-        var other = obj as NativeApplicationOutput;
-        if (other != null) return _value.Equals(other._value);
+        var other = obj as OutputLine;
+        if (other != null)
+        {
+            return _value.Equals(other._value);
+        }
         var s = obj as string;
-        if (s != null) return _value.Equals(s);
+        if (s != null)
+        {
+            return _value.Equals(s);
+        }
         return false;
     }
 
     /// <inheritdoc/>
     public int CompareTo(object value)
     {
-        var other = value as NativeApplicationOutput;
-        if (other != null) return _value.CompareTo(other._value);
+        var other = value as OutputLine;
+        if (other != null)
+        {
+            return _value.CompareTo(other._value);
+        }
         return _value.CompareTo(value);
     }
 
@@ -450,3 +462,5 @@ public class NativeApplicationOutput : IComparable, IComparable<string>, IEquata
     /// <returns>The trimmed string.</returns>
     public string TrimStart(params char[] trimChars) { return _value.TrimStart(trimChars); }
 }
+
+} // namespace InvokeNativeApplication

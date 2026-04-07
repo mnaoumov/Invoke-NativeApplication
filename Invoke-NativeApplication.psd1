@@ -13,7 +13,7 @@
         'Invoke-NativeApplication.format.ps1xml'
         'Invoke-NativeApplication.psd1'
         'Invoke-NativeApplication.psm1'
-        'NativeApplicationOutput.cs'
+        'OutputLine.cs'
     )
 
     FunctionsToExport = @(
