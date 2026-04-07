@@ -141,7 +141,7 @@ function Invoke-NativeApplicationSafe
         [Parameter(Position=1)][HashTable] $ArgumentList
     )
 
-    Invoke-NativeApplication -ScriptBlock:$ScriptBlock -IgnoreExitCode -ArgumentList:$ArgumentList |
+    Invoke-NativeApplication -ScriptBlock $ScriptBlock -IgnoreExitCode -ArgumentList $ArgumentList |
         Where-Object -FilterScript { -not $_.IsError }
 }
 
