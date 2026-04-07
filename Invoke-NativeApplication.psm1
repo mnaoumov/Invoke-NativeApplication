@@ -28,18 +28,18 @@ Add-Type -Path $csPath
     When specified, the function does not throw on non-zero exit codes.
 
 .EXAMPLE
-    exec { git status }
+    Invoke-NativeApplication { git status }
 
     Runs 'git status' and throws if git returns a non-zero exit code.
 
 .EXAMPLE
-    exec { robocopy source dest /MIR } -AllowedExitCodes @(0, 1, 2, 3)
+    Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes @(0, 1, 2, 3)
 
     Runs robocopy and treats exit codes 0-3 as successful (robocopy uses
     non-zero exit codes for informational purposes).
 
 .EXAMPLE
-    $output = exec { dotnet build } -IgnoreExitCode
+    $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode
     $errors = $output | Where-Object { $_.IsError }
 
     Captures all output including errors without throwing, then filters
@@ -123,7 +123,7 @@ function Invoke-NativeApplication
     A hashtable of arguments to splat into the script block.
 
 .EXAMPLE
-    $branches = safeexec { git branch }
+    $branches = Invoke-NativeApplicationSafe { git branch }
 
     Gets the list of git branches, ignoring any STDERR output and exit code.
 
