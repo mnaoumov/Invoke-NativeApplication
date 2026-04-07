@@ -10,8 +10,8 @@ Describe 'Invoke-NativeApplicationSafe' {
         }
 
         It 'excludes STDERR lines from output' {
-            $allOutput = Invoke-NativeApplication { cmd /c "echo stdout & echo stderr 1>&2" } -IgnoreExitCode
-            $safeOutput = Invoke-NativeApplicationSafe { cmd /c "echo stdout & echo stderr 1>&2" }
+            $allOutput = @(Invoke-NativeApplication { cmd /c "echo stdout & echo stderr 1>&2" } -IgnoreExitCode)
+            $safeOutput = @(Invoke-NativeApplicationSafe { cmd /c "echo stdout & echo stderr 1>&2" })
             $safeOutput.Count | Should -BeLessThan $allOutput.Count
         }
     }
