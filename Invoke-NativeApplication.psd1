@@ -7,6 +7,8 @@
     Description       = 'A set of helper functions to invoke native applications in PowerShell with proper error messages and exit code handlers'
     PowerShellVersion = '3.0'
 
+    FormatsToProcess  = @('Invoke-NativeApplication.format.ps1xml')
+
     FunctionsToExport = @(
         'Invoke-NativeApplication'
         'Invoke-NativeApplicationSafe'
