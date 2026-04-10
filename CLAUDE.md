@@ -20,8 +20,8 @@ PowerShell module for invoking native applications with proper STDERR capture an
 
 ## L3. PowerShell Style
 
-- Allman brace style throughout
-- Follow G21 conventions
+- K&R / One True Brace Style (opening brace on same line)
+- Follow PowerShell conventions from global CLAUDE.md
 
 ## L4. C# Style
 

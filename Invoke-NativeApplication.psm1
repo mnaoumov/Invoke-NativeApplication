@@ -68,10 +68,8 @@ Add-Type -Path $csPath
 .LINK
     https://mnaoumov.wordpress.com/2015/03/31/execution-of-external-commands-native-applications-in-powershell-done-right-part-2/
 #>
-function Invoke-NativeApplication
-{
-    param
-    (
+function Invoke-NativeApplication {
+    param(
         [Parameter(Position=0)][ScriptBlock] $ScriptBlock,
         [Parameter(Position=1)][HashTable] $ArgumentList,
         [Parameter()][int[]] $AllowedExitCodes = @(0),
@@ -81,41 +79,31 @@ function Invoke-NativeApplication
     $backupErrorActionPreference = $ErrorActionPreference
 
     $ErrorActionPreference = "Continue"
-    try
-    {
+    try {
         Write-Verbose ('Executing native application {0} with parameters: {1}' -f $ScriptBlock, ([PSCustomObject] $ArgumentList))
-        if (Test-CalledFromPrompt)
-        {
+        if (Test-CalledFromPrompt) {
             $wrapperScriptBlock = { & $ScriptBlock @ArgumentList }.GetNewClosure()
-        }
-        else
-        {
+        } else {
             $wrapperScriptBlock = { & $ScriptBlock @ArgumentList 2>&1 }.GetNewClosure()
         }
 
         & $wrapperScriptBlock | ForEach-Object -Process {
             $isError = $_ -is [System.Management.Automation.ErrorRecord]
 
-            if ($isError)
-            {
+            if ($isError) {
                 $message = $_.Exception.Message
-            }
-            else
-            {
+            } else {
                 $message = "$_"
             }
 
             New-Object -TypeName InvokeNativeApplication.OutputLine -ArgumentList $message, $isError
         }
 
-        if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE))
-        {
+        if ((-not $IgnoreExitCode) -and (Test-Path -Path Variable:LASTEXITCODE) -and ($AllowedExitCodes -notcontains $LASTEXITCODE)) {
             throw ('Native application {0} with parameters {1} failed at {2} with exit code {3}' -f
                 $ScriptBlock, ([PSCustomObject] $ArgumentList), (Get-PSCallStack -ErrorAction SilentlyContinue)[1].Location, $LASTEXITCODE)
         }
-    }
-    finally
-    {
+    } finally {
         $ErrorActionPreference = $backupErrorActionPreference
     }
 }
@@ -148,10 +136,8 @@ function Invoke-NativeApplication
 .NOTES
     Alias: safeexec
 #>
-function Invoke-NativeApplicationSafe
-{
-    param
-    (
+function Invoke-NativeApplicationSafe {
+    param(
         [Parameter(Position=0)][ScriptBlock] $ScriptBlock,
         [Parameter(Position=1)][HashTable] $ArgumentList
     )
@@ -160,12 +146,9 @@ function Invoke-NativeApplicationSafe
         Where-Object -FilterScript { -not $_.IsError }
 }
 
-function Test-CalledFromPrompt
-{
-    foreach ($frame in Get-PSCallStack)
-    {
-        if ($frame.Command -eq "prompt")
-        {
+function Test-CalledFromPrompt {
+    foreach ($frame in Get-PSCallStack) {
+        if ($frame.Command -eq "prompt") {
             return $true
         }
     }
