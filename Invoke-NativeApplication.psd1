@@ -1,6 +1,6 @@
 @{
     RootModule        = 'Invoke-NativeApplication.psm1'
-    ModuleVersion     = '1.0.0'
+    ModuleVersion     = '1.0.1'
     GUID              = '2e0ffa09-0307-4400-a36f-f276425c3bd3'
     Author            = 'Michael Naumov'
     Copyright         = '(c) Michael Naumov. All rights reserved.'
