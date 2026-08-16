@@ -1,9 +1,8 @@
 @{
-    # Without CurrentUser, PSDepend installs into $env:ProgramFiles and fails without admin rights.
+    # PSDepend uses Target as the scope proxy for PSGalleryModule; it is not a passthrough
+    # Parameter. Without CurrentUser it defaults to AllUsers and fails without admin rights.
     PSDependOptions = @{
-        Parameters = @{
-            Scope = 'CurrentUser'
-        }
+        Target = 'CurrentUser'
     }
 
     Pester          = '5.7.1'

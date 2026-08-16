@@ -10,7 +10,7 @@ PowerShell module for invoking native applications with proper STDERR capture an
 - `Invoke-NativeApplication.format.ps1xml` — format file for string-like display
 - `build.ps1` — dev script: installs dependencies via PSDepend and runs Pester tests
 - `deploy.ps1` — release script: tests, version bump, commit, tag, push, PowerShell Gallery, GitHub release
-- `requirements.psd1` — dev dependencies (PSDepend format); pins `Scope = 'CurrentUser'` so no admin rights are needed
+- `requirements.psd1` — dev dependencies (PSDepend format); pins `Target = 'CurrentUser'` so no admin rights are needed (PSDepend's `Target` *is* the `Install-Module -Scope` proxy — a `Parameters.Scope` entry is rejected with a warning and ignored)
 - `*.Tests.ps1` — Pester 5 test files (next to source, not in a separate directory)
 
 ## L2. Exported API
