@@ -3,7 +3,13 @@ param()
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-trap { throw $Error[0] }
+trap {
+    # $Error[0] reports the real fault line; a different exception there means it is stale.
+    if ($Error.Count -gt 0 -and [object]::ReferenceEquals($Error[0].Exception, $_.Exception)) {
+        throw $Error[0]
+    }
+    throw $_
+}
 
 # Bootstrap PSDepend
 if (-not (Get-Module -Name PSDepend -ListAvailable)) {
