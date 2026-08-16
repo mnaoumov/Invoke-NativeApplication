@@ -28,6 +28,26 @@ Describe 'Invoke-NativeApplicationSafe' {
         }
     }
 
+    Context 'out parameters' {
+        It 'captures the STDERR lines it filters out' {
+            $result = @(Invoke-NativeApplicationSafe { cmd /c "echo out & echo err 1>&2" } -StdErrVariable 'stdErr')
+            $result | Should -HaveCount 1
+            @($stdErr) | Should -HaveCount 1
+            $stdErr[0].ToString() | Should -Be 'err '
+        }
+
+        It 'captures the ignored exit code' {
+            Invoke-NativeApplicationSafe { cmd /c "exit 9" } -ExitCodeVariable 'exitCode' -SuccessVariable 'success' | Out-Null
+            $exitCode | Should -Be 9
+            $success | Should -BeFalse
+        }
+
+        It 'captures the interleaved output including STDERR' {
+            Invoke-NativeApplicationSafe { cmd /c "echo out & echo err 1>&2" } -OutputVariable 'allOutput' | Out-Null
+            @($allOutput) | Should -HaveCount 2
+        }
+    }
+
     Context 'aliases' {
         It 'safeexec alias resolves to Invoke-NativeApplicationSafe' {
             $alias = Get-Alias safeexec

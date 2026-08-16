@@ -35,6 +35,8 @@ Alias: `exec`
 | `AllowedExitCodes` | `int[]`       | Exit codes considered successful. Defaults to `@(0)`.          |
 | `IgnoreExitCode`   | `switch`      | When specified, does not throw on non-zero exit codes.         |
 
+Plus the [out parameters](#out-parameters).
+
 #### Examples
 
 ```powershell
@@ -64,6 +66,65 @@ Invoke-NativeApplicationSafe { git branch }
 ```
 
 Alias: `safeexec`
+
+#### Parameters
+
+| Parameter      | Type          | Description                                                    |
+|----------------|---------------|----------------------------------------------------------------|
+| `ScriptBlock`  | `ScriptBlock` | The script block containing the native application invocation. |
+| `ArgumentList` | `HashTable`   | A hashtable of arguments to splat into the script block.       |
+
+Plus the [out parameters](#out-parameters) — handy here, because they give access to the exit code and to the STDERR lines this function filters out of its return value.
+
+```powershell
+$branches = Invoke-NativeApplicationSafe { git branch } -ExitCodeVariable 'code' -StdErrVariable 'err'
+
+if ($code -ne 0) {
+    Write-Warning -Message ($err -join [System.Environment]::NewLine)
+}
+```
+
+## Out Parameters
+
+Both functions can capture each piece of the invocation separately. Every out parameter takes the **name** of a variable (without the `$`, although a leading `$` is tolerated) and sets that variable in the caller's scope, following the convention of the built-in `-OutVariable` / `-ErrorVariable` common parameters.
+
+| Parameter           | Captured value                                                                                  |
+|---------------------|--------------------------------------------------------------------------------------------------|
+| `StdOutVariable`    | STDOUT lines only, as an `OutputLine[]`.                                                          |
+| `StdErrVariable`    | STDERR lines only, as an `OutputLine[]`.                                                          |
+| `OutputVariable`    | All lines in their original interleaved order — the same sequence the function returns.           |
+| `ExitCodeVariable`  | The exit code, or `$null` if the script block ran no native application.                          |
+| `SuccessVariable`   | `$true` when the exit code is one of `AllowedExitCodes`. Not affected by `-IgnoreExitCode`.       |
+| `DurationVariable`  | Execution time as a `TimeSpan`.                                                                   |
+| `StartTimeVariable` | `DateTime` the execution started at.                                                              |
+| `EndTimeVariable`   | `DateTime` the execution finished at.                                                             |
+| `CommandVariable`   | The executed script block and its splatted arguments rendered as a string, suitable for logging.  |
+
+```powershell
+Invoke-NativeApplication { dotnet build } -IgnoreExitCode `
+    -StdOutVariable 'out' `
+    -StdErrVariable 'err' `
+    -ExitCodeVariable 'code' `
+    -DurationVariable 'duration' | Out-Null
+
+"dotnet build exited with $code after $duration"
+$err | ForEach-Object { Write-Warning -Message $_ }
+```
+
+The variables are set **before** the exit code exception is thrown, so a `try`/`catch` around the call can still inspect everything that was captured:
+
+```powershell
+try {
+    Invoke-NativeApplication { dotnet build } -StdErrVariable 'err' -DurationVariable 'duration'
+} catch {
+    Write-Warning -Message ('Build failed after {0} with {1} error lines' -f $duration, $err.Count)
+}
+```
+
+Notes:
+
+- The variables land in the scope where the call is made — exactly like `-OutVariable`. A call inside a nested script block sets them inside that script block.
+- When called from the PowerShell prompt, STDERR is normally left unredirected so that it keeps its default console formatting. Requesting `-StdErrVariable` or `-OutputVariable` forces the redirection even there, because the STDERR lines cannot be captured otherwise.
 
 ## Output Type: InvokeNativeApplication.OutputLine
 

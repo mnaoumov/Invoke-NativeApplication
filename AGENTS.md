@@ -17,11 +17,19 @@ PowerShell module for invoking native applications with proper STDERR capture an
 - `Invoke-NativeApplication` (alias `exec`) — run command, throw on bad exit code
 - `Invoke-NativeApplicationSafe` (alias `safeexec`) — run command, ignore exit code, filter STDERR
 - `InvokeNativeApplication.OutputLine` — output type with `IsError` property, delegates all `System.String` members
+- Both functions take `-*Variable` out parameters (`StdOut`, `StdErr`, `Output`, `ExitCode`, `Success`, `Duration`, `StartTime`, `EndTime`, `Command`)
+
+## L2a. Out Parameter Internals
+
+- Out parameters take a variable **name** and set it in the caller's scope via `$PSCmdlet.SessionState.PSVariable.Set()`, mirroring the built-in `-OutVariable` convention
+- `$PSCmdlet.SessionState` reaches the **immediate** caller only: a name forwarded from one module function to another lands in the module's scope, not the end user's. That is why `Invoke-NativeApplicationCore` fills a `-Capture` hashtable and each public function sets its own caller's variables from it
+- The capture hashtable is filled in Core's `finally`, so it is populated even when the exit code check throws
+- `$script:CaptureVariableParameters` maps each out parameter to its capture key — add new captures there, in both public `param()` blocks, and in the comment-based help
 
 ## L3. PowerShell Style
 
 - K&R / One True Brace Style (opening brace on same line)
-- Follow PowerShell conventions from global CLAUDE.md
+- Follow PowerShell conventions from global AGENTS.md
 
 ## L4. C# Style
 
