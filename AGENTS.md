@@ -9,7 +9,8 @@ PowerShell module for invoking native applications with proper STDERR capture an
 - `OutputLine.cs` — C# class `InvokeNativeApplication.OutputLine` (string-like wrapper with `IsError`)
 - `Invoke-NativeApplication.format.ps1xml` — format file for string-like display
 - `build.ps1` — dev script: installs dependencies via PSDepend and runs Pester tests
-- `requirements.psd1` — dev dependencies (PSDepend format)
+- `deploy.ps1` — release script: tests, version bump, commit, tag, push, PowerShell Gallery, GitHub release
+- `requirements.psd1` — dev dependencies (PSDepend format); pins `Scope = 'CurrentUser'` so no admin rights are needed
 - `*.Tests.ps1` — Pester 5 test files (next to source, not in a separate directory)
 
 ## L2. Exported API
@@ -47,3 +48,7 @@ PowerShell module for invoking native applications with proper STDERR capture an
 
 - Target: PowerShell Gallery
 - Minimum PowerShell version: 3.0
+- Release with `pwsh -NoProfile -File deploy.ps1` (defaults to a minor bump); `-DryRun` reports the steps without changing anything
+- Never bump `ModuleVersion` by hand — `deploy.ps1` owns it and produces the `chore: bump version to <version>` commit plus the `v<version>` tag
+- Only the manifest's `FileList` is published: `deploy.ps1` stages those files so the tests and dev scripts stay out of the package
+- The Gallery API key comes from `-ApiKey`, `$env:PSGALLERY_API_KEY`, or an unlocked Bitwarden item named `PowerShell Gallery` — never from a chat transcript
