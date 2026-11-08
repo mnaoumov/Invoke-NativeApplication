@@ -12,6 +12,7 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 
 - `Invoke-NativeApplication.psd1` — module manifest
 - `Invoke-NativeApplication.psm1` — module script (exports functions and aliases)
+- `Invoke-NativeApplication.Elevated.ps1` — the elevated half of `-Elevate`: reads a CliXml request, runs the script block through the module, writes a CliXml response (listed in the manifest `FileList`)
 - `OutputLine.cs` — C# class `InvokeNativeApplication.OutputLine` (string-like wrapper with `IsError`)
 - `Invoke-NativeApplication.format.ps1xml` — format file for string-like display
 - `build.ps1` — dev script: installs dependencies via PSDepend and runs Pester tests
@@ -25,6 +26,17 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 - `Invoke-NativeApplicationSafe` (alias `safeexec`) — run command, ignore exit code, filter STDERR
 - `InvokeNativeApplication.OutputLine` — output type with `IsError` property, delegates all `System.String` members
 - Both functions take `-*Variable` out parameters (`StdOut`, `StdErr`, `Output`, `ExitCode`, `Success`, `Duration`, `StartTime`, `EndTime`, `Command`)
+
+- Both functions take the execution options `-WorkingDirectory`, `-Environment`, `-LogPath`, `-AppendLog`, `-Priority` (`BelowNormal`/`Idle`) and `-Elevate`, forwarded to the core through `$script:ExecutionOptionParameters`
+- Timeouts, hidden windows and process-tree kills are deliberately not options: they need the launcher to own process creation, so the README composes them with `headless-run` inside the script block
+
+## L2b. Execution Option Internals
+
+- The core applies the options around the script block and undoes them in reverse in its `finally`; with `-Elevate` in a non-elevated session it applies none locally and hands them to the elevated process instead
+- `-Priority` lowers the PowerShell process itself, because Windows children of a BelowNormal or Idle process inherit its class
+- Never put a `[ValidateSet]` (or any validation attribute) on a core parameter: Windows PowerShell's `GetNewClosure()` re-validates every attributed variable it copies, so an unset `$Priority` broke every 5.1 call. Validate on the public functions only
+- A `$null` passed to a .NET `string` parameter arrives as `""`; remove an environment variable with `[NullString]::Value` (`Set-ProcessEnvironmentVariable`), in tests too
+- Tests replace the UAC launch by mocking `Start-ElevatedHost` and `Test-IsElevated`, so the full CliXml round trip runs without a prompt
 
 ## L2a. Out Parameter Internals
 

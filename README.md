@@ -35,7 +35,7 @@ Alias: `exec`
 | `AllowedExitCodes` | `int[]`       | Exit codes considered successful. Defaults to `@(0)`.          |
 | `IgnoreExitCode`   | `switch`      | When specified, does not throw on non-zero exit codes.         |
 
-Plus the [out parameters](#out-parameters).
+Plus the [execution options](#execution-options) and the [out parameters](#out-parameters).
 
 #### Examples
 
@@ -74,7 +74,7 @@ Alias: `safeexec`
 | `ScriptBlock`  | `ScriptBlock` | The script block containing the native application invocation. |
 | `ArgumentList` | `HashTable`   | A hashtable of arguments to splat into the script block.       |
 
-Plus the [out parameters](#out-parameters) — handy here, because they give access to the exit code and to the STDERR lines this function filters out of its return value.
+Plus the [execution options](#execution-options) and the [out parameters](#out-parameters) — the latter handy here, because they give access to the exit code and to the STDERR lines this function filters out of its return value.
 
 ```powershell
 $branches = Invoke-NativeApplicationSafe { git branch } -ExitCodeVariable 'code' -StdErrVariable 'err'
@@ -83,6 +83,45 @@ if ($code -ne 0) {
     Write-Warning -Message ($err -join [System.Environment]::NewLine)
 }
 ```
+
+## Execution Options
+
+Both functions take these options, which shape how the script block runs. Each is undone when the call ends, including when it throws.
+
+| Parameter          | Type        | Description                                                                                                                         |
+|--------------------|-------------|-------------------------------------------------------------------------------------------------------------------------------------|
+| `WorkingDirectory` | `string`    | Directory the script block, and so the native application, runs in. The current location is restored afterwards.                   |
+| `Environment`      | `HashTable` | Environment variable overrides for this call only. A `$null` value removes the variable. The previous values are restored.          |
+| `LogPath`          | `string`    | Log file receiving every line as it is produced, STDERR lines prefixed with `[ERR] `. Overwritten unless `-AppendLog` is given.     |
+| `AppendLog`        | `switch`    | Appends to the `-LogPath` file instead of overwriting it.                                                                           |
+| `Priority`         | `string`    | `BelowNormal` or `Idle`. Windows only.                                                                                              |
+| `Elevate`          | `switch`    | Runs the script block in an elevated PowerShell process, after a UAC prompt. Windows only. Changes nothing in an elevated session. |
+
+```powershell
+# Run in another directory, with CI set and NODE_OPTIONS removed for this call only, teeing the output into a log
+Invoke-NativeApplication { npm test } -WorkingDirectory 'C:\repo' -Environment @{ CI = 'true'; NODE_OPTIONS = $null } -LogPath 'C:\logs\test.log'
+
+# Keep the machine responsive during a long build
+Invoke-NativeApplication { dotnet build } -Priority BelowNormal
+
+# Stop a service from a non-elevated session
+Invoke-NativeApplication { param($Name) sc.exe stop $Name } -ArgumentList @{ Name = 'Spooler' } -Elevate
+```
+
+Notes:
+
+- `-Priority` lowers the PowerShell process itself for the duration of the call, because a process started by a `BelowNormal` or `Idle` process inherits its priority class. Higher classes are not inherited, so they are not offered.
+- `-Elevate` hands the output lines and the exit code back once the elevated process ends, so the output is not streamed. Only the script block text and `-ArgumentList` reach the elevated process: variables the script block closes over do not, and complex arguments arrive deserialized. `-WorkingDirectory` defaults to the current location there, and `-Environment` and `-Priority` are applied in the elevated process. Variables set earlier in the session with `$env:` do not reach it, so pass them with `-Environment`.
+
+### Timeouts, hidden windows and process trees
+
+These need the launcher to own the creation of the process, which a script block does not give. Use [`headless-run`](https://github.com/mnaoumov/headless-run) inside the script block for them: it runs a program with no console window, terminates the whole process tree with a kill-on-close job, and enforces a timeout.
+
+```powershell
+Invoke-NativeApplication { headless-run --timeout 30m --below-normal -- dotnet test }
+```
+
+`headless-run` returns `124` when the timeout expires, so the call throws with that exit code.
 
 ## Out Parameters
 

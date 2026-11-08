@@ -10,6 +10,7 @@
     FormatsToProcess  = @('Invoke-NativeApplication.format.ps1xml')
 
     FileList          = @(
+        'Invoke-NativeApplication.Elevated.ps1'
         'Invoke-NativeApplication.format.ps1xml'
         'Invoke-NativeApplication.psd1'
         'Invoke-NativeApplication.psm1'
