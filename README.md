@@ -188,6 +188,10 @@ $result | Where-Object { $_.IsError }
 
 - PowerShell 3.0 or later
 
+## Changelog
+
+All notable changes to this project will be documented in the [CHANGELOG](./CHANGELOG.md).
+
 ## Support
 
 <!-- markdownlint-disable MD033 -->
