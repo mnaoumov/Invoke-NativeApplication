@@ -12,10 +12,13 @@
       1. Verify the working tree is clean and the current branch is the default one.
       2. Run the test suite via build.ps1 (skip with -SkipTests).
       3. Bump ModuleVersion in the manifest.
-      4. Commit the bump as 'chore: bump version to <version>' and tag it 'v<version>'.
-      5. Push the commit and the tag.
-      6. Publish to the PowerShell Gallery (skip with -SkipGallery).
-      7. Create the GitHub release with generated notes (skip with -SkipGitHubRelease).
+      4. Add the version's CHANGELOG.md section, grouped from the first-parent commits since the
+         previous tag (Changelog.ps1).
+      5. Commit the bump and the changelog as 'chore: bump version to <version>' and tag it 'v<version>'.
+      6. Push the commit and the tag.
+      7. Publish to the PowerShell Gallery (skip with -SkipGallery).
+      8. Create the GitHub release with the version's CHANGELOG.md section as its notes
+         (skip with -SkipGitHubRelease).
 
     Only the files listed in the manifest's FileList are published, so the tests, this script
     and build.ps1 stay out of the published package.
@@ -104,6 +107,9 @@ $script:ModuleName = 'Invoke-NativeApplication'
 $script:ManifestPath = Join-Path -Path $PSScriptRoot -ChildPath "$script:ModuleName.psd1"
 $script:DefaultBranch = 'main'
 $script:Repository = 'mnaoumov/Invoke-NativeApplication'
+$script:ChangelogPath = Join-Path -Path $PSScriptRoot -ChildPath 'CHANGELOG.md'
+
+. (Join-Path -Path $PSScriptRoot -ChildPath 'Changelog.ps1')
 
 function Write-Step {
     param(
@@ -201,6 +207,54 @@ function Update-ModuleVersion {
 
     Set-Content -Path $script:ManifestPath -Value $updatedContent -NoNewline -Encoding utf8
     Test-ModuleManifest -Path $script:ManifestPath | Out-Null
+}
+
+function Get-ReleaseCommit {
+    param(
+        [Parameter()][string] $FromTag,
+        [Parameter()][string] $ToRef = 'HEAD'
+    )
+
+    # One record per first-parent commit: subject and body split by a unit separator, records by a record separator.
+    $range = $(if ($FromTag) { '{0}..{1}' -f $FromTag, $ToRef } else { $ToRef })
+    exec { git -C $PSScriptRoot log --first-parent --format=%s%x1f%b%x1e $range } -StdOutVariable 'logLines' | Out-Null
+    $log = (@($logLines) | ForEach-Object -Process { [string] $_ }) -join "`n"
+
+    foreach ($record in $log.Split([char] 0x1e)) {
+        $fields = $record.Trim().Split([char] 0x1f)
+
+        if ([string]::IsNullOrWhiteSpace($fields[0]) -or $fields[0] -match '^chore: bump version to ') {
+            continue
+        }
+
+        @{ Subject = $fields[0].Trim(); Body = $(if ($fields.Count -gt 1) { $fields[1] } else { '' }) }
+    }
+}
+
+function Get-PreviousTag {
+    safeexec { git -C $PSScriptRoot describe --tags --abbrev=0 --match 'v*' HEAD } -StdOutVariable 'tagLines' -SuccessVariable 'isTagFound' | Out-Null
+
+    if (-not $isTagFound) {
+        return $null
+    }
+
+    return ($tagLines -join '').Trim()
+}
+
+function Get-ChangelogSectionBody {
+    param(
+        [Parameter()][string] $Version
+    )
+
+    # The section of one version, without its heading, as the release notes take it.
+    $content = (Get-Content -Path $script:ChangelogPath -Raw) -replace "`r`n", "`n"
+    $match = [regex]::Match($content, ('(?ms)^## {0}(?:\s[^\n]*)?\n(?<body>.*?)(?=^## |\z)' -f [regex]::Escape($Version)))
+
+    if (-not $match.Success) {
+        throw ('{0} has no section for {1}.' -f $script:ChangelogPath, $Version)
+    }
+
+    return $match.Groups['body'].Value.Trim()
 }
 
 function Get-BitwardenApiKey {
@@ -353,6 +407,22 @@ if ($PublishOnly) {
     Update-ModuleVersion -NewVersion $newVersion
 }
 
+Write-Step -Message ('Adding the {0} section to CHANGELOG.md' -f $newVersion)
+if ($PublishOnly) {
+    Write-Skipped -Message '-PublishOnly'
+} else {
+    $sectionHeading = '{0} ({1})' -f $newVersion, (Get-Date -Format 'yyyy-MM-dd')
+    $sectionBody = ConvertTo-ChangelogSection -Commit @(Get-ReleaseCommit -FromTag (Get-PreviousTag))
+    Write-Host -Object (('## {0}{1}{1}{2}' -f $sectionHeading, [System.Environment]::NewLine, $sectionBody) -replace '(?m)^', '    ')
+
+    if ($DryRun) {
+        Write-Skipped -Message '-DryRun'
+    } else {
+        $changelog = Add-ChangelogSection -Content (Get-Content -Path $script:ChangelogPath -Raw) -Heading $sectionHeading -Body $sectionBody
+        [System.IO.File]::WriteAllText($script:ChangelogPath, $changelog, (New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false))
+    }
+}
+
 Write-Step -Message ('Committing and tagging {0}' -f $tagName)
 if ($PublishOnly) {
     Assert-TagExists -TagName $tagName
@@ -361,7 +431,7 @@ if ($PublishOnly) {
     Write-Skipped -Message '-DryRun'
 } else {
     $commitMessage = 'chore: bump version to {0}' -f $newVersion
-    exec { git -C $PSScriptRoot add -- $script:ManifestPath }
+    exec { git -C $PSScriptRoot add -- $script:ManifestPath $script:ChangelogPath }
     exec { git -C $PSScriptRoot commit -m $commitMessage }
     exec { git -C $PSScriptRoot tag -a $tagName -m $tagName }
 }
@@ -393,7 +463,15 @@ if ($SkipGitHubRelease) {
 } elseif (Test-GitHubReleaseExists -TagName $tagName) {
     Write-Skipped -Message ('the {0} release already exists' -f $tagName)
 } else {
-    exec { gh release create $tagName --title $tagName --generate-notes --repo $script:Repository }
+    # The release notes are the version's CHANGELOG.md section, so the two never say different things.
+    $notesPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('release-notes-' + [System.Guid]::NewGuid().ToString('N') + '.md')
+    [System.IO.File]::WriteAllText($notesPath, (Get-ChangelogSectionBody -Version $newVersion.ToString()), (New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false))
+
+    try {
+        exec { gh release create $tagName --title $tagName --notes-file $notesPath --repo $script:Repository }
+    } finally {
+        Remove-Item -Path $notesPath -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host -Object ''

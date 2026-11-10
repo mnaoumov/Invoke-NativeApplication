@@ -16,7 +16,9 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 - `OutputLine.cs` — C# class `InvokeNativeApplication.OutputLine` (string-like wrapper with `IsError`)
 - `Invoke-NativeApplication.format.ps1xml` — format file for string-like display
 - `build.ps1` — dev script: installs dependencies via PSDepend and runs Pester tests
-- `deploy.ps1` — release script: tests, version bump, commit, tag, push, PowerShell Gallery, GitHub release
+- `deploy.ps1` — release script: tests, version bump, changelog section, commit, tag, push, PowerShell Gallery, GitHub release
+- `Changelog.ps1` — dev helper dot-sourced by `deploy.ps1`: renders a release's `CHANGELOG.md` section, grouped by Conventional Commits type, from its first-parent commits
+- `CHANGELOG.md` — release history, newest first, one `## <version> (<yyyy-MM-dd>)` section per release; linked from the README `## Changelog` section
 - `requirements.psd1` — dev dependencies (PSDepend format); pins `Target = 'CurrentUser'` so no admin rights are needed (PSDepend's `Target` *is* the `Install-Module -Scope` proxy — a `Parameters.Scope` entry is rejected with a warning and ignored)
 - `*.Tests.ps1` — Pester 5 test files (next to source, not in a separate directory)
 
@@ -68,5 +70,6 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 - Minimum PowerShell version: 3.0
 - Release with `pwsh -NoProfile -File deploy.ps1` (defaults to a minor bump); `-DryRun` reports the steps without changing anything
 - Never bump `ModuleVersion` by hand — `deploy.ps1` owns it and produces the `chore: bump version to <version>` commit plus the `v<version>` tag
+- Every release adds its `CHANGELOG.md` section: `deploy.ps1` writes it from the first-parent commits since the previous tag, commits it with the version bump, and creates the GitHub release with that section as its notes. To reword the generated section, edit `CHANGELOG.md` and then the release notes to match; never leave a release whose notes exist only on GitHub
 - Only the manifest's `FileList` is published: `deploy.ps1` stages those files so the tests and dev scripts stay out of the package
 - The Gallery API key comes from `-ApiKey`, `$env:PSGALLERY_API_KEY`, or an unlocked Bitwarden item named `PowerShell Gallery` — never from a chat transcript
