@@ -1,8 +1,6 @@
 # Invoke-NativeApplication
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/mnaoumov)
-[![PowerShell Gallery](https://img.shields.io/powershellgallery/v/Invoke-NativeApplication)](https://www.powershellgallery.com/packages/Invoke-NativeApplication)
-[![GitHub release](https://img.shields.io/github/v/release/mnaoumov/Invoke-NativeApplication)](https://github.com/mnaoumov/Invoke-NativeApplication/releases)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buy-me-a-coffee&logoColor=black)](https://www.buymeacoffee.com/mnaoumov) [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/Invoke-NativeApplication)](https://www.powershellgallery.com/packages/Invoke-NativeApplication) [![PowerShell Gallery downloads](https://img.shields.io/powershellgallery/dt/Invoke-NativeApplication)](https://www.powershellgallery.com/packages/Invoke-NativeApplication) [![License](https://img.shields.io/github/license/mnaoumov/Invoke-NativeApplication)](https://github.com/mnaoumov/Invoke-NativeApplication/blob/main/LICENSE.md)
 
 A PowerShell module for invoking native applications with proper error messages and exit code handling.
 
