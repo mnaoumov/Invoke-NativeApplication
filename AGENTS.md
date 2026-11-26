@@ -38,6 +38,7 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 
 - The core applies the options around the script block and undoes them in reverse in its `finally`; with `-Elevate` in a non-elevated session it applies none locally and hands them to the elevated process instead
 - `-Priority` lowers the PowerShell process itself, because Windows children of a BelowNormal or Idle process inherit its class
+- The class is read and written only through `Get-CurrentProcessPriority` and `Set-CurrentProcessPriority`, so tests mock them to check the save, set and restore. Something outside, such as a job object or a scheduler, can change the live class at any moment, so a test that reads it back is not deterministic. The one live test asserts only that the child runs at the requested class or lower, and it finds the child's marker line rather than relying on the last line
 - Never put a `[ValidateSet]` (or any validation attribute) on a core parameter: Windows PowerShell's `GetNewClosure()` re-validates every attributed variable it copies, so an unset `$Priority` broke every 5.1 call. Validate on the public functions only
 - A `$null` passed to a .NET `string` parameter arrives as `""`; remove an environment variable with `[NullString]::Value` (`Set-ProcessEnvironmentVariable`), in tests too
 - Tests replace the UAC launch by mocking `Start-ElevatedHost` and `Test-IsElevated`, so the full CliXml round trip runs without a prompt
