@@ -186,6 +186,22 @@ $result | Where-Object { $_.IsError }
 
 - PowerShell 3.0 or later
 
+## See also
+
+| Library | Features | How `Invoke-NativeApplication` differs |
+| --- | --- | --- |
+| [`Exec`](https://github.com/icraftsoftware/Be.Stateless.PowerShell.Module.Exec) | `Invoke-Tool` runs a script block and tees its output; throws on a non-zero exit code unless a predicate matches an output line; `Add-ToolAlias` | Same goal as `Exec`; judges failure by a list of allowed exit codes instead of an output predicate; adds: per-line STDERR marking, separate captures, execution options |
+| [`Executable`](https://github.com/cwchapma/Executable) | `Invoke-Executable` (alias `exec`) runs a command string; merges STDERR into STDOUT in order; throws on a non-zero exit code, with allowable exit codes | Same goal as `Executable`; takes a script block with splatted arguments instead of a command string; adds: per-line STDERR marking, separate captures, execution options |
+| [`ExternalCommand`](https://github.com/choovick/ps-invoke-externalcommand) | `Invoke-ExternalCommand` takes an executable and an argument array and escapes the arguments itself; captures STDOUT, STDERR and the exit code into variables; hides chosen arguments, STDOUT or STDERR from the host output | Same goal as `ExternalCommand`; runs a script block, so argument passing is PowerShell's own; keeps STDERR lines in their original order; omits argument hiding |
+| [`headless-run`](https://github.com/mnaoumov/headless-run) (my tool) | Runs a program with no console window; terminates the whole process tree through a kill-on-close job; enforces a timeout; lowers the priority | Complements `headless-run`: runs it inside the script block for [timeouts, hidden windows and process trees](#timeouts-hidden-windows-and-process-trees), which this module leaves to it |
+| [`Invoke-Build`](https://github.com/nightroman/Invoke-Build) | Build engine whose `exec` checks the exit code against valid codes; custom error message; `-Echo` writes the command; `-StdErr` adds the STDERR text to the error | Same core as the `exec` of `Invoke-Build`, as a standalone module; adds: per-line STDERR marking, separate captures, execution options; omits the custom error message, the echo and the STDERR text in the error |
+| [`Native`](https://github.com/mklement0/Native) | `ie` passes arguments to external programs robustly on Windows; `iee` also throws on a non-zero exit code; `ins` runs a command line in the platform-native shell; `dbea` shows how arguments are passed | Covers part of `Native`: shares throwing on a non-zero exit code; leaves argument passing to PowerShell; adds: allowed exit codes, per-line STDERR marking, separate captures, execution options |
+| [`PowerShell`](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_preference_variables#psnativecommanduseerroractionpreference) `$PSNativeCommandUseErrorActionPreference` | Built in since PowerShell 7.4; a non-zero exit code raises an error governed by `$ErrorActionPreference` | Same goal as the built-in preference; runs on PowerShell 3.0 and later, Windows PowerShell included; adds per call: allowed exit codes, per-line STDERR marking, separate captures, execution options |
+| [`psake`](https://github.com/psake/psake) | Build engine whose `Exec` throws on a non-zero exit code; custom error message; retries on a matching error; working directory; new process with a timeout; STDERR text in the error | Same core as the `Exec` of `psake`, as a standalone module; adds: allowed exit codes, per-line STDERR marking, separate captures, environment, log, priority and elevation options; omits retries, the custom error message and the STDERR text in the error, and leaves timeouts to `headless-run` |
+| [`PSNativeCmdDevKit`](https://github.com/dsccommunity/PSNativeCmdDevKit) | Helpers for writing wrappers around native commands; `Invoke-NativeCommand` takes an executable and a parameter list; separates STDERR from STDOUT; `sudo` preference rules on Linux and macOS; parses list-formatted output into a hashtable | Covers part of `PSNativeCmdDevKit`: shares running a native command with STDERR kept apart; runs a script block instead of an argument list; elevates through UAC on Windows only; omits the `sudo` rules and the output parsing |
+
+Last searched for similar libraries on 2026-11-25.
+
 ## Changelog
 
 All notable changes to this project will be documented in the [CHANGELOG](./CHANGELOG.md).
