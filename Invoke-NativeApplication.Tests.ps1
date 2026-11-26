@@ -40,6 +40,52 @@ Describe 'Invoke-NativeApplication' {
         It 'does not throw with IgnoreExitCode switch' {
             { Invoke-NativeApplication { cmd /c "exit 42" } -IgnoreExitCode } | Should -Not -Throw
         }
+
+        It 'appends the STDERR lines to the exit code error' {
+            $errorMessage = $null
+
+            try {
+                Invoke-NativeApplication { cmd /c "echo out & echo first 1>&2 & echo second 1>&2 & exit 3" } | Out-Null
+            } catch {
+                $errorMessage = $_.Exception.Message
+            }
+
+            $lines = @($errorMessage -split '\r?\n')
+            $lines | Should -HaveCount 4
+            $lines[0] | Should -BeLike 'Native application * failed at * with exit code 3'
+            $lines[1] | Should -Be 'STDERR:'
+            $lines[2].Trim() | Should -Be 'first'
+            $lines[3].Trim() | Should -Be 'second'
+        }
+
+        It 'keeps only the last 10 STDERR lines in the exit code error' {
+            $errorMessage = $null
+
+            try {
+                Invoke-NativeApplication { cmd /c "for /l %i in (1,1,12) do @echo line%i 1>&2"; cmd /c "exit 4" } | Out-Null
+            } catch {
+                $errorMessage = $_.Exception.Message
+            }
+
+            $lines = @($errorMessage -split '\r?\n')
+            $lines | Should -HaveCount 12
+            $lines[1] | Should -Be 'STDERR (last 10 of 12 lines):'
+            $lines[2].Trim() | Should -Be 'line3'
+            $lines[11].Trim() | Should -Be 'line12'
+        }
+
+        It 'keeps the exit code error to one line without STDERR' {
+            $errorMessage = $null
+
+            try {
+                Invoke-NativeApplication { cmd /c "echo out & exit 5" } | Out-Null
+            } catch {
+                $errorMessage = $_.Exception.Message
+            }
+
+            $errorMessage | Should -BeLike 'Native application * with exit code 5'
+            $errorMessage | Should -Not -Match '\n'
+        }
     }
 
     Context 'STDERR handling' {
