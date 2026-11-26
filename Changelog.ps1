@@ -108,6 +108,95 @@ function ConvertTo-ChangelogSection {
     return ((@($summary) + $blocks) -join "`n`n")
 }
 
+$script:NotesConventionalTypes = 'feat|fix|perf|refactor|chore|docs|test|tests|build|ci|style|revert'
+
+$script:RawNotesBulletPatterns = @(
+    # '- feat(scope): subject', '- abc1234 fix: subject'. Never a bold prefix: this file writes the scope as
+    # '- **scope:** subject', and 'deps', 'test' and 'build' are common scopes there.
+    ('(?i)^[-*+]\s+(?:\[?[0-9a-f]{7,40}\]?(?:\([^)]*\))?\s+)?(?:' + $script:NotesConventionalTypes + ')(?:\([^)]*\))?!?:\s')
+    # Conventional-changelog output: '* **scope:** subject ([abc1234](.../commit/abc1234))'
+    '(?i)\(\[?[0-9a-f]{7,40}\]?(?:\([^)]*/commit/[^)]*\))?\)\s*$'
+    # GitHub's generated "What's Changed": '* subject by @user in https://github.com/o/r/pull/1'
+    '(?i)\sby @\S+ in https://github\.com/\S+/pull/\d+\s*$'
+)
+
+$script:NotesBoilerplatePattern = '(?i)^(?:\*\*(?:Full Changelog|npm)\*\*\s*:\s*\S+|<?https?://\S+>?)$'
+$script:NotesHeadingPattern = '^#{1,6}\s'
+$script:NotesBulletPattern = '^[-*+]\s+'
+
+function Get-ReleaseNotesVerdict {
+    <#
+    .SYNOPSIS
+        Classifies a changelog section or release body as 'readable', 'empty', 'compare-link-only' or 'raw-commit-list'.
+
+    .DESCRIPTION
+        Headings, '**Full Changelog**:' and '**npm**:' lines and bare URLs carry no reader-facing text, so a body of only
+        those is 'empty', or 'compare-link-only' when one of them is a compare link. A body whose bullets are at least half
+        commit subjects (a Conventional Commits prefix, a commit hash, GitHub's generated 'by @user in .../pull/n') is a
+        'raw-commit-list', however it is grouped. A bold '**scope:**' prefix is not raw.
+
+    .PARAMETER Text
+        The section body or release notes.
+    #>
+    param(
+        [Parameter()][AllowEmptyString()][AllowNull()][string] $Text
+    )
+
+    $lines = @(([string] $Text) -split '\r?\n' | ForEach-Object -Process { $_.Trim() } | Where-Object -FilterScript { $_ -ne '' })
+    $content = @($lines | Where-Object -FilterScript { ($_ -notmatch $script:NotesHeadingPattern) -and ($_ -notmatch $script:NotesBoilerplatePattern) })
+
+    if ($content.Count -eq 0) {
+        if (@($lines | Where-Object -FilterScript { $_.Contains('/compare/') }).Count -gt 0) {
+            return 'compare-link-only'
+        }
+
+        return 'empty'
+    }
+
+    $bullets = @($content | Where-Object -FilterScript { $_ -match $script:NotesBulletPattern })
+    $rawBullets = @($bullets | Where-Object -FilterScript {
+            $line = $_
+            @($script:RawNotesBulletPatterns | Where-Object -FilterScript { $line -match $_ }).Count -gt 0
+        })
+
+    if (($bullets.Count -gt 0) -and ($rawBullets.Count * 2 -ge $bullets.Count)) {
+        return 'raw-commit-list'
+    }
+
+    return 'readable'
+}
+
+function Assert-ReadableReleaseNotes {
+    <#
+    .SYNOPSIS
+        Throws unless Get-ReleaseNotesVerdict calls the text 'readable'.
+
+    .PARAMETER Text
+        The section body or release notes.
+
+    .PARAMETER Label
+        What the text is, for the error message, e.g. 'The 1.4.0 CHANGELOG.md section'.
+    #>
+    param(
+        [Parameter()][AllowEmptyString()][AllowNull()][string] $Text,
+        [Parameter()][string] $Label = 'The release notes'
+    )
+
+    $verdict = Get-ReleaseNotesVerdict -Text $Text
+
+    if ($verdict -eq 'readable') {
+        return
+    }
+
+    $reasons = @{
+        'empty' = 'are empty'
+        'compare-link-only' = 'are only a compare link'
+        'raw-commit-list' = 'are mostly raw commit subjects or hashes'
+    }
+
+    throw ('{0} {1} ({2}). Every release needs human-readable notes: write what changed for the user in CHANGELOG.md, then run the release again.' -f $Label, $reasons[$verdict], $verdict)
+}
+
 function Add-ChangelogSection {
     <#
     .SYNOPSIS
