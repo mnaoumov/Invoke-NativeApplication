@@ -22,6 +22,9 @@ $script:LineCaptureParameters = @('StdOutVariable', 'StdErrVariable', 'OutputVar
 # Invoke-NativeApplicationCore unchanged.
 $script:ExecutionOptionParameters = @('WorkingDirectory', 'Environment', 'LogPath', 'AppendLog', 'Priority', 'Elevate')
 
+# How many of the last STDERR lines the exception on a disallowed exit code carries.
+$script:ExceptionStdErrLineLimit = 10
+
 # The script the elevated host runs for -Elevate. It ships next to this module.
 $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-NativeApplication.Elevated.ps1'
 
@@ -45,6 +48,13 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     convention of the built-in -OutVariable and -ErrorVariable common parameters. The
     variables are set even when the function throws on a disallowed exit code, so a
     caller that wraps the call in try/catch can still inspect what was captured.
+
+    The exception thrown on a disallowed exit code names the command, the call site and
+    the exit code on its first line. When STDERR passed through the pipeline (any call
+    from a script, any call with -StdErrVariable or -OutputVariable, and -Elevate), the
+    last 10 STDERR lines follow under a 'STDERR:' line, so a CI log shows why the
+    program failed. With more than 10 lines the header reads
+    'STDERR (last 10 of <n> lines):'.
 
 .PARAMETER ScriptBlock
     The script block containing the native application invocation.
@@ -431,6 +441,10 @@ function Invoke-NativeApplicationCore {
         $capturedOutput = New-Object -TypeName System.Collections.ArrayList
     }
 
+    # The last STDERR lines, kept whatever is captured, for the exit code exception message.
+    $stdErrTail = New-Object -TypeName System.Collections.Generic.Queue[string]
+    $stdErrLineCount = 0
+
     $locationPushed = $false
     $savedEnvironment = $null
     $savedPriority = $null
@@ -499,6 +513,15 @@ function Invoke-NativeApplicationCore {
                 $null = $capturedOutput.Add($outputLine)
             }
 
+            if ($outputLine.IsError) {
+                $stdErrLineCount++
+                $stdErrTail.Enqueue($outputLine.ToString())
+
+                if ($stdErrTail.Count -gt $script:ExceptionStdErrLineLimit) {
+                    $null = $stdErrTail.Dequeue()
+                }
+            }
+
             if ($null -ne $logWriter) {
                 if ($outputLine.IsError) {
                     $logWriter.WriteLine('[ERR] ' + $outputLine.ToString())
@@ -521,8 +544,9 @@ function Invoke-NativeApplicationCore {
         }
 
         if ((-not $IgnoreExitCode) -and ($null -ne $exitCode) -and ($AllowedExitCodes -notcontains $exitCode)) {
-            throw ('Native application {0} failed at {1} with exit code {2}' -f
-                $command, (Get-PSCallStack -ErrorAction SilentlyContinue)[2].Location, $exitCode)
+            $message = 'Native application {0} failed at {1} with exit code {2}' -f
+                $command, (Get-PSCallStack -ErrorAction SilentlyContinue)[2].Location, $exitCode
+            throw ($message + (Format-StdErrTail -Lines $stdErrTail.ToArray() -TotalCount $stdErrLineCount))
         }
     } finally {
         $stopwatch.Stop()
@@ -558,6 +582,34 @@ function Invoke-NativeApplicationCore {
             $Capture['StdErr'] = @($capturedOutput | Where-Object -FilterScript { $_.IsError })
         }
     }
+}
+
+<#
+.SYNOPSIS
+    Formats the STDERR section appended to the exit code exception message.
+.DESCRIPTION
+    Returns an empty string when there was no STDERR, so the message stays one line.
+    Otherwise returns a newline, a 'STDERR:' header (naming the cap when lines were
+    dropped) and the lines, each on its own line. The idea of carrying STDERR in the
+    error comes from psake's Exec and Invoke-Build's exec -StdErr.
+#>
+function Format-StdErrTail {
+    param(
+        [Parameter()][AllowEmptyCollection()][string[]] $Lines,
+        [Parameter()][int] $TotalCount
+    )
+
+    if (($null -eq $Lines) -or ($Lines.Count -eq 0)) {
+        return ''
+    }
+
+    if ($TotalCount -gt $Lines.Count) {
+        $header = 'STDERR (last {0} of {1} lines):' -f $Lines.Count, $TotalCount
+    } else {
+        $header = 'STDERR:'
+    }
+
+    return [Environment]::NewLine + $header + [Environment]::NewLine + ($Lines -join [Environment]::NewLine)
 }
 
 <#
