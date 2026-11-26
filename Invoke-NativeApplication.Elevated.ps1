@@ -11,7 +11,8 @@
 
 .PARAMETER RequestPath
     CliXml file holding the script block text, ArgumentList, WorkingDirectory,
-    Environment and Priority.
+    Environment, Priority, and the retry options (AllowedExitCodes, MaxRetries,
+    RetryTriggerErrorPattern, RetryDelaySeconds).
 
 .PARAMETER ResponsePath
     CliXml file receiving Lines (Text and IsError each), ExitCode and Error.
@@ -57,6 +58,18 @@ try {
 
     if ($request.Priority) {
         $parameters['Priority'] = $request.Priority
+    }
+
+    # The attempts run here, so a retry needs no second UAC prompt. The exit code check
+    # stays with the caller; the allowed codes only decide which attempts failed.
+    if ($request.MaxRetries -gt 0) {
+        $parameters['AllowedExitCodes'] = $request.AllowedExitCodes
+        $parameters['MaxRetries'] = $request.MaxRetries
+        $parameters['RetryDelaySeconds'] = $request.RetryDelaySeconds
+
+        if ($request.RetryTriggerErrorPattern) {
+            $parameters['RetryTriggerErrorPattern'] = $request.RetryTriggerErrorPattern
+        }
     }
 
     $output = @()

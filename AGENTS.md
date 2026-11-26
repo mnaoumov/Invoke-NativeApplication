@@ -30,6 +30,7 @@ Filing from the CLI or the API (`gh issue create --body`, or an AI agent filing 
 - Both functions take `-*Variable` out parameters (`StdOut`, `StdErr`, `Output`, `ExitCode`, `Success`, `Duration`, `StartTime`, `EndTime`, `Command`)
 
 - Both functions take the execution options `-WorkingDirectory`, `-Environment`, `-LogPath`, `-AppendLog`, `-Priority` (`BelowNormal`/`Idle`) and `-Elevate`, forwarded to the core through `$script:ExecutionOptionParameters`
+- Both functions take the retry options `-MaxRetries`, `-RetryTriggerErrorPattern` and `-RetryDelaySeconds`. `Invoke-NativeApplicationWithRetry` loops over the core with a fresh capture per attempt (the out parameters describe the last attempt), forces `AppendLog` after the first attempt, and with `-Elevate` in a non-elevated session hands the options to the elevated process instead, so there is one UAC prompt. The core builds `FailureMessage` even under `-IgnoreExitCode`, because the pattern matches it; the public functions pass `-CallSite`, since the extra layer shifts `Get-PSCallStack`
 - Timeouts, hidden windows and process-tree kills are deliberately not options: they need the launcher to own process creation, so the README composes them with `headless-run` inside the script block
 
 ## L2b. Execution Option Internals

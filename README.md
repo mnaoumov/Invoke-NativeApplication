@@ -34,7 +34,7 @@ Alias: `exec`
 | `IgnoreExitCode`   | `switch`      | When specified, does not throw on non-zero exit codes.         |
 | `ErrorMessage`     | `string`      | Caller text put first, on its own line, in the exception thrown on a disallowed exit code. |
 
-Plus the [execution options](#execution-options) and the [out parameters](#out-parameters).
+Plus the [execution options](#execution-options), the [retries](#retries) and the [out parameters](#out-parameters).
 
 The exception on a disallowed exit code names the command, the call site and the exit code on its first line, and carries the last 10 STDERR lines below it, so a CI log shows why the program failed:
 
@@ -93,7 +93,7 @@ Alias: `safeexec`
 | `ScriptBlock`  | `ScriptBlock` | The script block containing the native application invocation. |
 | `ArgumentList` | `HashTable`   | A hashtable of arguments to splat into the script block.       |
 
-Plus the [execution options](#execution-options) and the [out parameters](#out-parameters) — the latter handy here, because they give access to the exit code and to the STDERR lines this function filters out of its return value.
+Plus the [execution options](#execution-options), the [retries](#retries) and the [out parameters](#out-parameters) — the latter handy here, because they give access to the exit code and to the STDERR lines this function filters out of its return value.
 
 ```powershell
 $branches = Invoke-NativeApplicationSafe { git branch } -ExitCodeVariable 'code' -StdErrVariable 'err'
@@ -141,6 +141,31 @@ Invoke-NativeApplication { headless-run --timeout 30m --below-normal -- dotnet t
 ```
 
 `headless-run` returns `124` when the timeout expires, so the call throws with that exit code.
+
+## Retries
+
+Both functions can run the script block again when an attempt fails, which suits flaky network commands such as `npm install`, `git fetch` or `winget` in CI. The idea and the parameter names come from `psake`'s `Exec`.
+
+| Parameter                  | Type     | Description                                                                                                         |
+|----------------------------|----------|---------------------------------------------------------------------------------------------------------------------|
+| `MaxRetries`               | `int`    | How many more times to run the script block after a failed attempt. Defaults to `0`, no retry.                      |
+| `RetryTriggerErrorPattern` | `string` | A regular expression: only a failure whose text matches it is retried. Without it, every failure is retried.        |
+| `RetryDelaySeconds`        | `double` | Pause before each retry, in seconds. Defaults to `1`.                                                               |
+
+```powershell
+# Up to three attempts, 5 seconds apart, retried only on a network error
+Invoke-NativeApplication { npm ci } -MaxRetries 2 -RetryTriggerErrorPattern 'ETIMEDOUT|ECONNRESET' -RetryDelaySeconds 5
+```
+
+Each retry is announced with a warning such as `Attempt 1 of 3 failed with exit code 1. Retrying in 5 s.`
+
+Notes:
+
+- An attempt fails when its exit code is not one of `-AllowedExitCodes` or when the script block throws. A disallowed exit code counts as a failure even with `-IgnoreExitCode` and in `Invoke-NativeApplicationSafe`; it only stops the last failure from being thrown.
+- The pattern is matched against the failure text, which is the exception message (for an exit code, the message the exception would carry), followed by every STDERR line of the attempt, not only the last 10. Giving a pattern redirects STDERR even at an interactive prompt, so the lines can be matched.
+- The output lines of every attempt reach the pipeline as they are produced, the failed attempts' lines included. The [out parameters](#out-parameters) describe the last attempt only.
+- With `-LogPath`, the attempts after the first append to the log, so it keeps every attempt.
+- With `-Elevate` in a non-elevated session, the elevated process runs the attempts itself, so there is a single UAC prompt. Its output comes back once it ends, so only the last attempt's lines are returned there, and no warning is shown.
 
 ## Out Parameters
 
@@ -215,10 +240,10 @@ $result | Where-Object { $_.IsError }
 | [`Executable`](https://github.com/cwchapma/Executable) | `Invoke-Executable` (alias `exec`) runs a command string; merges STDERR into STDOUT in order; throws on a non-zero exit code, with allowable exit codes | Same goal as `Executable`; takes a script block with splatted arguments instead of a command string; adds: per-line STDERR marking, separate captures, execution options |
 | [`ExternalCommand`](https://github.com/choovick/ps-invoke-externalcommand) | `Invoke-ExternalCommand` takes an executable and an argument array and escapes the arguments itself; captures STDOUT, STDERR and the exit code into variables; hides chosen arguments, STDOUT or STDERR from the host output | Same goal as `ExternalCommand`; runs a script block, so argument passing is PowerShell's own; keeps STDERR lines in their original order; omits argument hiding |
 | [`headless-run`](https://github.com/mnaoumov/headless-run) (my tool) | Runs a program with no console window; terminates the whole process tree through a kill-on-close job; enforces a timeout; lowers the priority | Complements `headless-run`: runs it inside the script block for [timeouts, hidden windows and process trees](#timeouts-hidden-windows-and-process-trees), which this module leaves to it |
-| [`Invoke-Build`](https://github.com/nightroman/Invoke-Build) | Build engine whose `exec` checks the exit code against valid codes; custom error message; `-Echo` writes the command; `-StdErr` adds the STDERR text to the error | Same core as the `exec` of `Invoke-Build`, as a standalone module; shares the STDERR text in the error, always on and capped to the last 10 lines; adds: per-line STDERR marking, separate captures, execution options; omits the custom error message and the echo |
+| [`Invoke-Build`](https://github.com/nightroman/Invoke-Build) | Build engine whose `exec` checks the exit code against valid codes; custom error message; `-Echo` writes the command; `-StdErr` adds the STDERR text to the error | Same core as the `exec` of `Invoke-Build`, as a standalone module; shares the STDERR text in the error, always on and capped to the last 10 lines, and the custom error message; adds: per-line STDERR marking, separate captures, execution options, retries; omits the echo |
 | [`Native`](https://github.com/mklement0/Native) | `ie` passes arguments to external programs robustly on Windows; `iee` also throws on a non-zero exit code; `ins` runs a command line in the platform-native shell; `dbea` shows how arguments are passed | Covers part of `Native`: shares throwing on a non-zero exit code; leaves argument passing to PowerShell; adds: allowed exit codes, per-line STDERR marking, separate captures, execution options |
 | [`PowerShell`](https://learn.microsoft.com/powershell/module/microsoft.powershell.core/about/about_preference_variables#psnativecommanduseerroractionpreference) `$PSNativeCommandUseErrorActionPreference` | Built in since PowerShell 7.4; a non-zero exit code raises an error governed by `$ErrorActionPreference` | Same goal as the built-in preference; runs on PowerShell 3.0 and later, Windows PowerShell included; adds per call: allowed exit codes, per-line STDERR marking, separate captures, execution options |
-| [`psake`](https://github.com/psake/psake) | Build engine whose `Exec` throws on a non-zero exit code; custom error message; retries on a matching error; working directory; new process with a timeout; STDERR text in the error | Same core as the `Exec` of `psake`, as a standalone module; shares the STDERR text in the error, capped to the last 10 lines; adds: allowed exit codes, per-line STDERR marking, separate captures, environment, log, priority and elevation options; omits retries and the custom error message, and leaves timeouts to `headless-run` |
+| [`psake`](https://github.com/psake/psake) | Build engine whose `Exec` throws on a non-zero exit code; custom error message; retries on a matching error; working directory; new process with a timeout; STDERR text in the error | Same core as the `Exec` of `psake`, as a standalone module; shares the STDERR text in the error, capped to the last 10 lines, the custom error message, and retries on a matching error, with a configurable delay; adds: allowed exit codes, per-line STDERR marking, separate captures, environment, log, priority and elevation options; leaves timeouts to `headless-run` |
 | [`PSNativeCmdDevKit`](https://github.com/dsccommunity/PSNativeCmdDevKit) | Helpers for writing wrappers around native commands; `Invoke-NativeCommand` takes an executable and a parameter list; separates STDERR from STDOUT; `sudo` preference rules on Linux and macOS; parses list-formatted output into a hashtable | Covers part of `PSNativeCmdDevKit`: shares running a native command with STDERR kept apart; runs a script block instead of an argument list; elevates through UAC on Windows only; omits the `sudo` rules and the output parsing |
 
 Last searched for similar libraries on 2026-11-25.
