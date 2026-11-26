@@ -11,14 +11,16 @@
     Steps, in order:
       1. Verify the working tree is clean and the current branch is the default one.
       2. Run the test suite via build.ps1 (skip with -SkipTests).
-      3. Bump ModuleVersion in the manifest.
-      4. Add the version's CHANGELOG.md section, grouped from the first-parent commits since the
-         previous tag (Changelog.ps1).
-      5. Commit the bump and the changelog as 'chore: bump version to <version>' and tag it 'v<version>'.
-      6. Push the commit and the tag.
-      7. Publish to the PowerShell Gallery (skip with -SkipGallery).
-      8. Create the GitHub release with the version's CHANGELOG.md section as its notes
-         (skip with -SkipGitHubRelease).
+      3. Render the version's CHANGELOG.md section, grouped from the first-parent commits since the
+         previous tag (Changelog.ps1), and refuse the release when it is empty, only a compare link
+         or mostly raw commit subjects (with -PublishOnly, the section already in CHANGELOG.md).
+      4. Bump ModuleVersion in the manifest.
+      5. Add the rendered section to CHANGELOG.md.
+      6. Commit the bump and the changelog as 'chore: bump version to <version>' and tag it 'v<version>'.
+      7. Push the commit and the tag.
+      8. Publish to the PowerShell Gallery (skip with -SkipGallery).
+      9. Create the GitHub release with the version's CHANGELOG.md section as its notes, checked
+         again the same way (skip with -SkipGitHubRelease).
 
     Only the files listed in the manifest's FileList are published, so the tests, this script
     and build.ps1 stay out of the published package.
@@ -398,6 +400,17 @@ if ($SkipGallery) {
     $galleryApiKey = Get-GalleryApiKey -ProvidedApiKey $ApiKey -ItemName $BitwardenItemName
 }
 
+# Check the notes before touching the repository too, so an empty, compare-link-only or raw section fails
+# the run before the version bump, the commit and the tag.
+Write-Step -Message 'Checking the release notes'
+if ($PublishOnly) {
+    Assert-ReadableReleaseNotes -Text (Get-ChangelogSectionBody -Version $newVersion.ToString()) -Label ('The {0} CHANGELOG.md section' -f $newVersion)
+} else {
+    $sectionBody = ConvertTo-ChangelogSection -Commit @(Get-ReleaseCommit -FromTag (Get-PreviousTag))
+    Assert-ReadableReleaseNotes -Text $sectionBody -Label ('The rendered {0} CHANGELOG.md section' -f $newVersion)
+}
+Write-Host -Object '    human-readable'
+
 Write-Step -Message ('Bumping the manifest to {0}' -f $newVersion)
 if ($PublishOnly) {
     Write-Skipped -Message '-PublishOnly'
@@ -412,7 +425,6 @@ if ($PublishOnly) {
     Write-Skipped -Message '-PublishOnly'
 } else {
     $sectionHeading = '{0} ({1})' -f $newVersion, (Get-Date -Format 'yyyy-MM-dd')
-    $sectionBody = ConvertTo-ChangelogSection -Commit @(Get-ReleaseCommit -FromTag (Get-PreviousTag))
     Write-Host -Object (('## {0}{1}{1}{2}' -f $sectionHeading, [System.Environment]::NewLine, $sectionBody) -replace '(?m)^', '    ')
 
     if ($DryRun) {
@@ -464,8 +476,10 @@ if ($SkipGitHubRelease) {
     Write-Skipped -Message ('the {0} release already exists' -f $tagName)
 } else {
     # The release notes are the version's CHANGELOG.md section, so the two never say different things.
+    $releaseNotes = Get-ChangelogSectionBody -Version $newVersion.ToString()
+    Assert-ReadableReleaseNotes -Text $releaseNotes -Label ('The {0} release notes' -f $newVersion)
     $notesPath = Join-Path -Path ([System.IO.Path]::GetTempPath()) -ChildPath ('release-notes-' + [System.Guid]::NewGuid().ToString('N') + '.md')
-    [System.IO.File]::WriteAllText($notesPath, (Get-ChangelogSectionBody -Version $newVersion.ToString()), (New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false))
+    [System.IO.File]::WriteAllText($notesPath, $releaseNotes, (New-Object -TypeName System.Text.UTF8Encoding -ArgumentList $false))
 
     try {
         exec { gh release create $tagName --title $tagName --notes-file $notesPath --repo $script:Repository }
