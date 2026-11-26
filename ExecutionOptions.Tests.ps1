@@ -59,8 +59,9 @@ Describe 'execution options' {
         It 'writes every line, marking STDERR lines' {
             $logPath = Join-Path -Path $TestDrive -ChildPath 'run.log'
             Invoke-NativeApplication { cmd /c "echo out& echo err 1>&2" } -IgnoreExitCode -LogPath $logPath | Out-Null
-            $lines = @(Get-Content -LiteralPath $logPath)
-            $lines | Should -Be @('out', '[ERR] err ')
+            # cmd writes STDOUT and STDERR through separate pipes, so their order is not fixed.
+            $lines = @(Get-Content -LiteralPath $logPath | Sort-Object)
+            $lines | Should -Be @('[ERR] err ', 'out')
         }
 
         It 'overwrites by default and appends with AppendLog' {

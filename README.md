@@ -115,6 +115,7 @@ Both functions take these options, which shape how the script block runs. Each i
 | `AppendLog`        | `switch`    | Appends to the `-LogPath` file instead of overwriting it.                                                                           |
 | `Priority`         | `string`    | `BelowNormal` or `Idle`. Windows only.                                                                                              |
 | `Elevate`          | `switch`    | Runs the script block in an elevated PowerShell process, after a UAC prompt. Windows only. Changes nothing in an elevated session. |
+| `Redact`           | `string[]`  | Secret values replaced with `***` in the command text, the exception message, the retry warning and the `-LogPath` file.          |
 
 ```powershell
 # Run in another directory, with CI set and NODE_OPTIONS removed for this call only, teeing the output into a log
@@ -125,12 +126,16 @@ Invoke-NativeApplication { dotnet build } -Priority BelowNormal
 
 # Stop a service from a non-elevated session
 Invoke-NativeApplication { param($Name) sc.exe stop $Name } -ArgumentList @{ Name = 'Spooler' } -Elevate
+
+# Push with a token that shows as *** in the exception message and the log
+Invoke-NativeApplication { param($Token) git push "https://x-access-token:$Token@github.com/owner/repo.git" } -ArgumentList @{ Token = $env:GH_TOKEN } -Redact $env:GH_TOKEN -LogPath 'push.log'
 ```
 
 Notes:
 
 - `-Priority` lowers the PowerShell process itself for the duration of the call, because a process started by a `BelowNormal` or `Idle` process inherits its priority class. Higher classes are not inherited, so they are not offered.
 - `-Elevate` hands the output lines and the exit code back once the elevated process ends, so the output is not streamed. Only the script block text and `-ArgumentList` reach the elevated process: variables the script block closes over do not, and complex arguments arrive deserialized. `-WorkingDirectory` defaults to the current location there, and `-Environment` and `-Priority` are applied in the elevated process. Variables set earlier in the session with `$env:` do not reach it, so pass them with `-Environment`.
+- `-Redact` keeps secrets out of what the module itself writes: `-CommandVariable`, the `-Verbose` message, the exception message (the command, `-ErrorMessage` and the STDERR lines), the retry warning and the `-LogPath` file. The native application still receives the values unchanged. The lines returned to the pipeline and captured by `-StdOutVariable`, `-StdErrVariable` and `-OutputVariable` are your own data, so they are left as they are. Matching is literal and case-sensitive, a longer value is masked before a shorter one it contains, and empty values are ignored.
 
 ### Timeouts, hidden windows and process trees
 
