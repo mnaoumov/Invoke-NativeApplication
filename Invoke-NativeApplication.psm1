@@ -20,7 +20,10 @@ $script:LineCaptureParameters = @('StdOutVariable', 'StdErrVariable', 'OutputVar
 
 # Parameters shaping how the script block runs. Both public functions forward them to
 # Invoke-NativeApplicationCore unchanged.
-$script:ExecutionOptionParameters = @('WorkingDirectory', 'Environment', 'LogPath', 'AppendLog', 'Priority', 'Elevate')
+$script:ExecutionOptionParameters = @('WorkingDirectory', 'Environment', 'LogPath', 'AppendLog', 'Priority', 'Elevate', 'Redact')
+
+# What a redacted secret value is replaced with.
+$script:RedactionMask = '***'
 
 # How many of the last STDERR lines the exception on a disallowed exit code carries.
 $script:ExceptionStdErrLineLimit = 10
@@ -132,6 +135,15 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     variables the script block closes over do not, and complex arguments arrive
     deserialized. When the session is already elevated, the switch changes nothing.
 
+.PARAMETER Redact
+    Secret values, such as tokens and passwords, replaced with '***' in everything the
+    function itself writes: the command text (-CommandVariable, -Verbose and the
+    exception message), the STDERR lines in the exception message, the retry warning
+    and the -LogPath file. The native application still receives the values unchanged,
+    and the lines returned to the pipeline and captured by -StdOutVariable,
+    -StdErrVariable and -OutputVariable are left as they are. Matching is literal and
+    case-sensitive; empty values are ignored.
+
 .PARAMETER StdOutVariable
     Name of the variable receiving the STDOUT lines only, as an
     InvokeNativeApplication.OutputLine array.
@@ -237,6 +249,11 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
 
     Stops a service from a non-elevated session, after a UAC prompt.
 
+.EXAMPLE
+    Invoke-NativeApplication { param($Token) git push "https://x-access-token:$Token@github.com/owner/repo.git" } -ArgumentList @{ Token = $env:GH_TOKEN } -Redact $env:GH_TOKEN -LogPath 'push.log'
+
+    Pushes with a token that shows as '***' in the exception message and the log.
+
 .OUTPUTS
     InvokeNativeApplication.OutputLine
     One object per output line. Each behaves like a string but carries
@@ -268,6 +285,7 @@ function Invoke-NativeApplication {
         [Parameter()][switch] $AppendLog,
         [Parameter()][ValidateSet('BelowNormal', 'Idle')][string] $Priority,
         [Parameter()][switch] $Elevate,
+        [Parameter()][AllowEmptyCollection()][AllowEmptyString()][string[]] $Redact,
         [Parameter()][string] $StdOutVariable,
         [Parameter()][string] $StdErrVariable,
         [Parameter()][string] $OutputVariable,
@@ -310,6 +328,9 @@ function Invoke-NativeApplication {
     (-WorkingDirectory, -Environment, -LogPath, -AppendLog, -Priority, -Elevate). See
     Invoke-NativeApplication for their description. The -LogPath file receives the STDERR
     lines too, although they are filtered out of the return value.
+
+    It takes -Redact as well, which keeps secret values out of the command text and the
+    log; see Invoke-NativeApplication.
 
     It retries like Invoke-NativeApplication too (-MaxRetries, -RetryTriggerErrorPattern,
     -RetryDelaySeconds). An attempt fails on a non-zero exit code or a throwing script
@@ -398,6 +419,7 @@ function Invoke-NativeApplicationSafe {
         [Parameter()][switch] $AppendLog,
         [Parameter()][ValidateSet('BelowNormal', 'Idle')][string] $Priority,
         [Parameter()][switch] $Elevate,
+        [Parameter()][AllowEmptyCollection()][AllowEmptyString()][string[]] $Redact,
         [Parameter()][string] $StdOutVariable,
         [Parameter()][string] $StdErrVariable,
         [Parameter()][string] $OutputVariable,
@@ -479,6 +501,8 @@ function Invoke-NativeApplicationCore {
         # attributed variable it copies, and an unset Priority would fail it.
         [Parameter()][string] $Priority,
         [Parameter()][switch] $Elevate,
+        # No validation attribute either, for the same GetNewClosure() reason.
+        [Parameter()][string[]] $Redact,
         [Parameter(Mandatory=$true)][HashTable] $Capture,
         [Parameter()][switch] $CaptureLines,
         [Parameter()][switch] $CaptureStdErr
@@ -503,6 +527,8 @@ function Invoke-NativeApplicationCore {
     if (($null -ne $ArgumentList) -and ($ArgumentList.Count -gt 0)) {
         $command = '{0} with parameters {1}' -f $command, ([PSCustomObject] $ArgumentList)
     }
+
+    $command = Hide-SecretValue -Text $command -Secret $Redact
 
     $startTime = Get-Date
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
@@ -596,7 +622,7 @@ function Invoke-NativeApplicationCore {
 
             if ($outputLine.IsError) {
                 $stdErrLineCount++
-                $stdErrTail.Enqueue($outputLine.ToString())
+                $stdErrTail.Enqueue((Hide-SecretValue -Text $outputLine.ToString() -Secret $Redact))
 
                 if ($stdErrTail.Count -gt $script:ExceptionStdErrLineLimit) {
                     $null = $stdErrTail.Dequeue()
@@ -604,10 +630,12 @@ function Invoke-NativeApplicationCore {
             }
 
             if ($null -ne $logWriter) {
+                $logLine = Hide-SecretValue -Text $outputLine.ToString() -Secret $Redact
+
                 if ($outputLine.IsError) {
-                    $logWriter.WriteLine('[ERR] ' + $outputLine.ToString())
+                    $logWriter.WriteLine('[ERR] ' + $logLine)
                 } else {
-                    $logWriter.WriteLine($outputLine.ToString())
+                    $logWriter.WriteLine($logLine)
                 }
             }
 
@@ -634,7 +662,7 @@ function Invoke-NativeApplicationCore {
             # The caller's own text leads, as psake's Exec -ErrorMessage and Invoke-Build's
             # exec -ErrorMessage put it.
             if ($ErrorMessage) {
-                $message = $ErrorMessage + [Environment]::NewLine + $message
+                $message = (Hide-SecretValue -Text $ErrorMessage -Secret $Redact) + [Environment]::NewLine + $message
             }
 
             # Built even with -IgnoreExitCode, because -RetryTriggerErrorPattern matches it.
@@ -707,6 +735,33 @@ function Format-StdErrTail {
     }
 
     return [Environment]::NewLine + $header + [Environment]::NewLine + ($Lines -join [Environment]::NewLine)
+}
+
+<#
+.SYNOPSIS
+    Replaces every occurrence of each secret value in a text with the redaction mask.
+.DESCRIPTION
+    The longest values go first, so a secret containing another one is masked whole.
+    Matching is ordinal and case-sensitive. Empty and $null values are skipped, since
+    they would match everywhere.
+#>
+function Hide-SecretValue {
+    param(
+        [Parameter()][AllowNull()][AllowEmptyString()][string] $Text,
+        [Parameter()][AllowNull()][AllowEmptyCollection()][string[]] $Secret
+    )
+
+    if ([string]::IsNullOrEmpty($Text) -or ($null -eq $Secret)) {
+        return $Text
+    }
+
+    $values = @($Secret | Where-Object -FilterScript { -not [string]::IsNullOrEmpty($_) } | Sort-Object -Property Length -Descending)
+
+    foreach ($value in $values) {
+        $Text = $Text.Replace($value, $script:RedactionMask)
+    }
+
+    return $Text
 }
 
 <#
@@ -797,7 +852,7 @@ function Invoke-NativeApplicationWithRetry {
         if (($null -eq $failureRecord) -or ($null -ne $attemptCapture['FailureMessage'])) {
             $cause = ' with exit code {0}' -f $attemptCapture['ExitCode']
         } else {
-            $cause = ': ' + @("$failureText" -split '\r?\n')[0]
+            $cause = ': ' + @((Hide-SecretValue -Text "$failureText" -Secret $CoreParameters['Redact']) -split '\r?\n')[0]
         }
 
         Write-Warning -Message ('Attempt {0} of {1} failed{2}. Retrying in {3} s.' -f $attempt, ($MaxRetries + 1), $cause, $RetryDelaySeconds)
