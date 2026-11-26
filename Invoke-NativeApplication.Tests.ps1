@@ -86,6 +86,31 @@ Describe 'Invoke-NativeApplication' {
             $errorMessage | Should -BeLike 'Native application * with exit code 5'
             $errorMessage | Should -Not -Match '\n'
         }
+
+        It 'puts the -ErrorMessage text first in the exit code error' {
+            $errorMessage = $null
+
+            try {
+                Invoke-NativeApplication { cmd /c "echo oops 1>&2 & exit 6" } -ErrorMessage 'Is the tool installed?' | Out-Null
+            } catch {
+                $errorMessage = $_.Exception.Message
+            }
+
+            $lines = @($errorMessage -split '\r?\n')
+            $lines | Should -HaveCount 4
+            $lines[0] | Should -Be 'Is the tool installed?'
+            $lines[1] | Should -BeLike 'Native application * failed at * with exit code 6'
+            $lines[2] | Should -Be 'STDERR:'
+            $lines[3].Trim() | Should -Be 'oops'
+        }
+
+        It 'ignores -ErrorMessage when the exit code is allowed' {
+            { Invoke-NativeApplication { cmd /c "exit 0" } -ErrorMessage 'unused' } | Should -Not -Throw
+        }
+
+        It 'rejects an empty -ErrorMessage' {
+            { Invoke-NativeApplication { cmd /c "exit 0" } -ErrorMessage '' } | Should -Throw
+        }
     }
 
     Context 'STDERR handling' {

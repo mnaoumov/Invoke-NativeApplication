@@ -32,6 +32,7 @@ Alias: `exec`
 | `ArgumentList`     | `HashTable`   | A hashtable of arguments to splat into the script block.       |
 | `AllowedExitCodes` | `int[]`       | Exit codes considered successful. Defaults to `@(0)`.          |
 | `IgnoreExitCode`   | `switch`      | When specified, does not throw on non-zero exit codes.         |
+| `ErrorMessage`     | `string`      | Caller text put first, on its own line, in the exception thrown on a disallowed exit code. |
 
 Plus the [execution options](#execution-options) and the [out parameters](#out-parameters).
 
@@ -44,6 +45,13 @@ error MSB1009: Project file does not exist.
 ```
 
 With more than 10 lines the header reads `STDERR (last 10 of <n> lines):`. The lines are there whenever STDERR passes through the pipeline: in any call from a script, with `-StdErrVariable` or `-OutputVariable`, and with `-Elevate`. At an interactive prompt without those, STDERR goes straight to the console and the message stays one line.
+
+`-ErrorMessage` puts your own text, such as a hint at the likely cause, on a line of its own above all of that:
+
+```text
+Is the SVN client installed?
+Native application svn update failed at build.ps1: line 7 with exit code 1
+```
 
 #### Examples
 
@@ -59,6 +67,9 @@ Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes (0..3)
 
 # Combined ranges and individual codes
 Invoke-NativeApplication { robocopy source dest /MIR } -AllowedExitCodes ((0..3) + (8, 10) + (20..30))
+
+# Lead the failure message with a hint
+Invoke-NativeApplication { svn update } -ErrorMessage 'Is the SVN client installed?'
 
 # Capture all output without throwing, then filter for STDERR lines
 $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode

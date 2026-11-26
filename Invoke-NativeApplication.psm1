@@ -56,6 +56,9 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     program failed. With more than 10 lines the header reads
     'STDERR (last 10 of <n> lines):'.
 
+    With -ErrorMessage, the caller's text comes first, on its own line, ahead of
+    everything above.
+
 .PARAMETER ScriptBlock
     The script block containing the native application invocation.
 
@@ -67,6 +70,11 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
 
 .PARAMETER IgnoreExitCode
     When specified, the function does not throw on non-zero exit codes.
+
+.PARAMETER ErrorMessage
+    Caller text put first in the exception thrown on a disallowed exit code, on its own
+    line, for example a hint at the likely cause. The command, call site, exit code and
+    STDERR lines follow it as usual. It has no effect when nothing is thrown.
 
 .PARAMETER WorkingDirectory
     Directory the script block runs in. The current location is restored afterwards. A
@@ -156,6 +164,11 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     Combines ranges with individual codes. Treats 0-3, 8, 10, and 20-30 as successful.
 
 .EXAMPLE
+    Invoke-NativeApplication { svn update } -ErrorMessage 'Is the SVN client installed?'
+
+    On a failure, the exception message opens with 'Is the SVN client installed?'.
+
+.EXAMPLE
     $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode
     $errors = $output | Where-Object { $_.IsError }
 
@@ -215,6 +228,7 @@ function Invoke-NativeApplication {
         [Parameter(Position=1)][HashTable] $ArgumentList,
         [Parameter()][int[]] $AllowedExitCodes = @(0),
         [Parameter()][switch] $IgnoreExitCode,
+        [Parameter()][ValidateNotNullOrEmpty()][string] $ErrorMessage,
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $LogPath,
@@ -241,6 +255,7 @@ function Invoke-NativeApplication {
             -ArgumentList $ArgumentList `
             -AllowedExitCodes $AllowedExitCodes `
             -IgnoreExitCode:$IgnoreExitCode `
+            -ErrorMessage $ErrorMessage `
             -Capture $capture `
             -CaptureLines:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName $script:LineCaptureParameters) `
             -CaptureStdErr:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName @('StdErrVariable', 'OutputVariable'))
@@ -399,6 +414,7 @@ function Invoke-NativeApplicationCore {
         [Parameter()][HashTable] $ArgumentList,
         [Parameter()][int[]] $AllowedExitCodes = @(0),
         [Parameter()][switch] $IgnoreExitCode,
+        [Parameter()][string] $ErrorMessage,
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $LogPath,
@@ -546,6 +562,13 @@ function Invoke-NativeApplicationCore {
         if ((-not $IgnoreExitCode) -and ($null -ne $exitCode) -and ($AllowedExitCodes -notcontains $exitCode)) {
             $message = 'Native application {0} failed at {1} with exit code {2}' -f
                 $command, (Get-PSCallStack -ErrorAction SilentlyContinue)[2].Location, $exitCode
+
+            # The caller's own text leads, as psake's Exec -ErrorMessage and Invoke-Build's
+            # exec -ErrorMessage put it.
+            if ($ErrorMessage) {
+                $message = $ErrorMessage + [Environment]::NewLine + $message
+            }
+
             throw ($message + (Format-StdErrTail -Lines $stdErrTail.ToArray() -TotalCount $stdErrLineCount))
         }
     } finally {
