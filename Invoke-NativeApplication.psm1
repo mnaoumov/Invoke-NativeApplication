@@ -59,6 +59,13 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     With -ErrorMessage, the caller's text comes first, on its own line, ahead of
     everything above.
 
+    With -MaxRetries, a failed attempt runs the script block again, up to that many
+    more times, after a warning and a -RetryDelaySeconds pause. An attempt fails when
+    its exit code is not one of AllowedExitCodes or when the script block throws.
+    -RetryTriggerErrorPattern limits the retries to failures whose text matches it.
+    The output lines of every attempt reach the pipeline as they are produced; the out
+    parameters describe the last attempt only.
+
 .PARAMETER ScriptBlock
     The script block containing the native application invocation.
 
@@ -75,6 +82,24 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     Caller text put first in the exception thrown on a disallowed exit code, on its own
     line, for example a hint at the likely cause. The command, call site, exit code and
     STDERR lines follow it as usual. It has no effect when nothing is thrown.
+
+.PARAMETER MaxRetries
+    How many more times to run the script block after a failed attempt. Defaults to 0,
+    no retry. An attempt fails when its exit code is not one of AllowedExitCodes, even
+    with -IgnoreExitCode, or when the script block throws. Each retry is announced with
+    a warning. Only the last attempt's failure is thrown. With -LogPath, the attempts
+    after the first append to the log. With -Elevate in a non-elevated session, the
+    elevated process runs the attempts itself, so there is a single UAC prompt.
+
+.PARAMETER RetryTriggerErrorPattern
+    A regular expression limiting the retries to the failures it matches. It is
+    matched against the failure text: the exception message (or, for a disallowed exit
+    code, the message the exception would carry) followed by every STDERR line of the
+    attempt. Giving it redirects STDERR even when called from the prompt, so the lines
+    can be matched. Without -MaxRetries it has no effect.
+
+.PARAMETER RetryDelaySeconds
+    Pause before each retry, in seconds. Defaults to 1, as in psake's Exec.
 
 .PARAMETER WorkingDirectory
     Directory the script block runs in. The current location is restored afterwards. A
@@ -169,6 +194,11 @@ $script:ElevatedRunnerPath = Join-Path -Path $PSScriptRoot -ChildPath 'Invoke-Na
     On a failure, the exception message opens with 'Is the SVN client installed?'.
 
 .EXAMPLE
+    Invoke-NativeApplication { npm ci } -MaxRetries 2 -RetryTriggerErrorPattern 'ETIMEDOUT|ECONNRESET' -RetryDelaySeconds 5
+
+    Runs 'npm ci' up to three times, retrying only on a network error, 5 seconds apart.
+
+.EXAMPLE
     $output = Invoke-NativeApplication { dotnet build } -IgnoreExitCode
     $errors = $output | Where-Object { $_.IsError }
 
@@ -229,6 +259,9 @@ function Invoke-NativeApplication {
         [Parameter()][int[]] $AllowedExitCodes = @(0),
         [Parameter()][switch] $IgnoreExitCode,
         [Parameter()][ValidateNotNullOrEmpty()][string] $ErrorMessage,
+        [Parameter()][ValidateRange(0, 2147483647)][int] $MaxRetries = 0,
+        [Parameter()][ValidateScript({ Test-RegexPattern -Pattern $_ })][string] $RetryTriggerErrorPattern,
+        [Parameter()][ValidateRange(0, 2147483)][double] $RetryDelaySeconds = 1,
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $LogPath,
@@ -247,18 +280,17 @@ function Invoke-NativeApplication {
     )
 
     $capture = @{}
-    $executionOptions = Get-ExecutionOption -BoundParameters $PSBoundParameters
+    $coreParameters = Get-CoreParameter -BoundParameters $PSBoundParameters -MaxRetries $MaxRetries -RetryTriggerErrorPattern $RetryTriggerErrorPattern
+    $coreParameters['ScriptBlock'] = $ScriptBlock
+    $coreParameters['ArgumentList'] = $ArgumentList
+    $coreParameters['AllowedExitCodes'] = $AllowedExitCodes
+    $coreParameters['IgnoreExitCode'] = [bool] $IgnoreExitCode
+    $coreParameters['ErrorMessage'] = $ErrorMessage
+    $coreParameters['CallSite'] = (Get-PSCallStack -ErrorAction SilentlyContinue)[1].Location
 
     try {
-        Invoke-NativeApplicationCore @executionOptions `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ArgumentList `
-            -AllowedExitCodes $AllowedExitCodes `
-            -IgnoreExitCode:$IgnoreExitCode `
-            -ErrorMessage $ErrorMessage `
-            -Capture $capture `
-            -CaptureLines:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName $script:LineCaptureParameters) `
-            -CaptureStdErr:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName @('StdErrVariable', 'OutputVariable'))
+        Invoke-NativeApplicationWithRetry -CoreParameters $coreParameters -Capture $capture `
+            -MaxRetries $MaxRetries -RetryTriggerErrorPattern $RetryTriggerErrorPattern -RetryDelaySeconds $RetryDelaySeconds
     } finally {
         Set-CaptureVariable -SessionState $PSCmdlet.SessionState -BoundParameters $PSBoundParameters -Capture $capture
     }
@@ -279,11 +311,27 @@ function Invoke-NativeApplication {
     Invoke-NativeApplication for their description. The -LogPath file receives the STDERR
     lines too, although they are filtered out of the return value.
 
+    It retries like Invoke-NativeApplication too (-MaxRetries, -RetryTriggerErrorPattern,
+    -RetryDelaySeconds). An attempt fails on a non-zero exit code or a throwing script
+    block. After the last attempt, a throw is passed on and an exit code is not.
+
 .PARAMETER ScriptBlock
     The script block containing the native application invocation.
 
 .PARAMETER ArgumentList
     A hashtable of arguments to splat into the script block.
+
+.PARAMETER MaxRetries
+    How many more times to run the script block after a failed attempt: a non-zero exit
+    code, or a script block that throws. Defaults to 0. See Invoke-NativeApplication.
+
+.PARAMETER RetryTriggerErrorPattern
+    A regular expression limiting the retries to the failures it matches, matched
+    against the failure text and every STDERR line of the attempt. See
+    Invoke-NativeApplication.
+
+.PARAMETER RetryDelaySeconds
+    Pause before each retry, in seconds. Defaults to 1.
 
 .PARAMETER StdOutVariable
     Name of the variable receiving the STDOUT lines only. Same as the returned lines.
@@ -341,6 +389,9 @@ function Invoke-NativeApplicationSafe {
     param(
         [Parameter(Position=0)][ScriptBlock] $ScriptBlock,
         [Parameter(Position=1)][HashTable] $ArgumentList,
+        [Parameter()][ValidateRange(0, 2147483647)][int] $MaxRetries = 0,
+        [Parameter()][ValidateScript({ Test-RegexPattern -Pattern $_ })][string] $RetryTriggerErrorPattern,
+        [Parameter()][ValidateRange(0, 2147483)][double] $RetryDelaySeconds = 1,
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $LogPath,
@@ -359,17 +410,16 @@ function Invoke-NativeApplicationSafe {
     )
 
     $capture = @{}
-    $executionOptions = Get-ExecutionOption -BoundParameters $PSBoundParameters
+    $coreParameters = Get-CoreParameter -BoundParameters $PSBoundParameters -MaxRetries $MaxRetries -RetryTriggerErrorPattern $RetryTriggerErrorPattern
+    $coreParameters['ScriptBlock'] = $ScriptBlock
+    $coreParameters['ArgumentList'] = $ArgumentList
+    $coreParameters['AllowedExitCodes'] = @(0)
+    $coreParameters['IgnoreExitCode'] = $true
+    $coreParameters['CallSite'] = (Get-PSCallStack -ErrorAction SilentlyContinue)[1].Location
 
     try {
-        Invoke-NativeApplicationCore @executionOptions `
-            -ScriptBlock $ScriptBlock `
-            -ArgumentList $ArgumentList `
-            -AllowedExitCodes @(0) `
-            -IgnoreExitCode `
-            -Capture $capture `
-            -CaptureLines:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName $script:LineCaptureParameters) `
-            -CaptureStdErr:(Test-CaptureRequested -BoundParameters $PSBoundParameters -ParameterName @('StdErrVariable', 'OutputVariable')) |
+        Invoke-NativeApplicationWithRetry -CoreParameters $coreParameters -Capture $capture `
+            -MaxRetries $MaxRetries -RetryTriggerErrorPattern $RetryTriggerErrorPattern -RetryDelaySeconds $RetryDelaySeconds |
             Where-Object -FilterScript { -not $_.IsError }
     } finally {
         Set-CaptureVariable -SessionState $PSCmdlet.SessionState -BoundParameters $PSBoundParameters -Capture $capture
@@ -415,6 +465,12 @@ function Invoke-NativeApplicationCore {
         [Parameter()][int[]] $AllowedExitCodes = @(0),
         [Parameter()][switch] $IgnoreExitCode,
         [Parameter()][string] $ErrorMessage,
+        [Parameter()][string] $CallSite,
+        # The retry options reach the core only to be handed to the elevated process; a
+        # non-elevated retry loop lives in Invoke-NativeApplicationWithRetry.
+        [Parameter()][int] $MaxRetries,
+        [Parameter()][string] $RetryTriggerErrorPattern,
+        [Parameter()][double] $RetryDelaySeconds,
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $LogPath,
@@ -451,6 +507,7 @@ function Invoke-NativeApplicationCore {
     $startTime = Get-Date
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     $exitCode = $null
+    $failureMessage = $null
     $capturedOutput = $null
 
     if ($CaptureLines) {
@@ -500,6 +557,14 @@ function Invoke-NativeApplicationCore {
                 Priority         = $Priority
                 Result           = $elevatedResult
             }
+
+            if ($MaxRetries -gt 0) {
+                $elevatedOptions['AllowedExitCodes'] = $AllowedExitCodes
+                $elevatedOptions['MaxRetries'] = $MaxRetries
+                $elevatedOptions['RetryTriggerErrorPattern'] = $RetryTriggerErrorPattern
+                $elevatedOptions['RetryDelaySeconds'] = $RetryDelaySeconds
+            }
+
             # No closure here: a closure is bound to a new dynamic module, which cannot see
             # this module's private functions.
             $wrapperScriptBlock = { Invoke-ElevatedScriptBlock @elevatedOptions }
@@ -559,9 +624,12 @@ function Invoke-NativeApplicationCore {
             $exitCode = $LASTEXITCODE
         }
 
-        if ((-not $IgnoreExitCode) -and ($null -ne $exitCode) -and ($AllowedExitCodes -notcontains $exitCode)) {
-            $message = 'Native application {0} failed at {1} with exit code {2}' -f
-                $command, (Get-PSCallStack -ErrorAction SilentlyContinue)[2].Location, $exitCode
+        if (($null -ne $exitCode) -and ($AllowedExitCodes -notcontains $exitCode)) {
+            if (-not $CallSite) {
+                $CallSite = (Get-PSCallStack -ErrorAction SilentlyContinue)[2].Location
+            }
+
+            $message = 'Native application {0} failed at {1} with exit code {2}' -f $command, $CallSite, $exitCode
 
             # The caller's own text leads, as psake's Exec -ErrorMessage and Invoke-Build's
             # exec -ErrorMessage put it.
@@ -569,7 +637,12 @@ function Invoke-NativeApplicationCore {
                 $message = $ErrorMessage + [Environment]::NewLine + $message
             }
 
-            throw ($message + (Format-StdErrTail -Lines $stdErrTail.ToArray() -TotalCount $stdErrLineCount))
+            # Built even with -IgnoreExitCode, because -RetryTriggerErrorPattern matches it.
+            $failureMessage = $message + (Format-StdErrTail -Lines $stdErrTail.ToArray() -TotalCount $stdErrLineCount)
+
+            if (-not $IgnoreExitCode) {
+                throw $failureMessage
+            }
         }
     } finally {
         $stopwatch.Stop()
@@ -598,6 +671,7 @@ function Invoke-NativeApplicationCore {
         $Capture['Duration'] = $stopwatch.Elapsed
         $Capture['ExitCode'] = $exitCode
         $Capture['Success'] = ($null -eq $exitCode) -or ($AllowedExitCodes -contains $exitCode)
+        $Capture['FailureMessage'] = $failureMessage
 
         if ($null -ne $capturedOutput) {
             $Capture['Output'] = $capturedOutput.ToArray()
@@ -633,6 +707,155 @@ function Format-StdErrTail {
     }
 
     return [Environment]::NewLine + $header + [Environment]::NewLine + ($Lines -join [Environment]::NewLine)
+}
+
+<#
+.SYNOPSIS
+    Runs Invoke-NativeApplicationCore, re-running it after a failed attempt as psake's
+    Exec -maxRetries does.
+
+.DESCRIPTION
+    The retry loop follows psake's Exec (https://github.com/psake/psake,
+    src/public/Execute.ps1, MIT): a failed attempt is retried while retries are left and,
+    with a pattern, while the failure text matches it, after a pause. Unlike Exec, a
+    disallowed exit code counts as a failure even with -IgnoreExitCode, the pause is
+    configurable, and the Capture hashtable holds the last attempt only.
+
+    With -Elevate in a non-elevated session the attempts are left to the elevated
+    process, so the user sees one UAC prompt rather than one per attempt.
+#>
+function Invoke-NativeApplicationWithRetry {
+    param(
+        [Parameter()][HashTable] $CoreParameters,
+        [Parameter(Mandatory=$true)][HashTable] $Capture,
+        [Parameter()][int] $MaxRetries,
+        [Parameter()][string] $RetryTriggerErrorPattern,
+        [Parameter()][double] $RetryDelaySeconds
+    )
+
+    if (($MaxRetries -gt 0) -and $CoreParameters['Elevate'] -and (Test-IsWindows) -and (-not (Test-IsElevated))) {
+        $CoreParameters['MaxRetries'] = $MaxRetries
+        $CoreParameters['RetryTriggerErrorPattern'] = $RetryTriggerErrorPattern
+        $CoreParameters['RetryDelaySeconds'] = $RetryDelaySeconds
+        $MaxRetries = 0
+    }
+
+    if ($MaxRetries -le 0) {
+        Invoke-NativeApplicationCore @CoreParameters -Capture $Capture
+        return
+    }
+
+    $attempt = 1
+
+    while ($true) {
+        $attemptCapture = @{}
+        $failureRecord = $null
+
+        try {
+            Invoke-NativeApplicationCore @CoreParameters -Capture $attemptCapture
+        } catch [System.Management.Automation.PipelineStoppedException] {
+            throw
+        } catch {
+            $failureRecord = $_
+        } finally {
+            $Capture.Clear()
+
+            foreach ($key in $attemptCapture.Keys) {
+                $Capture[$key] = $attemptCapture[$key]
+            }
+        }
+
+        if ($null -ne $failureRecord) {
+            $failureText = $failureRecord.Exception.Message
+        } elseif ($attemptCapture['Success']) {
+            return
+        } else {
+            $failureText = $attemptCapture['FailureMessage']
+        }
+
+        $retry = $attempt -le $MaxRetries
+
+        if ($retry -and $RetryTriggerErrorPattern) {
+            $matchText = $failureText
+
+            if ($null -ne $attemptCapture['StdErr']) {
+                $matchText = $matchText + [Environment]::NewLine + (@($attemptCapture['StdErr']) -join [Environment]::NewLine)
+            }
+
+            $retry = [regex]::IsMatch($matchText, $RetryTriggerErrorPattern)
+        }
+
+        if (-not $retry) {
+            if ($null -ne $failureRecord) {
+                throw $failureRecord
+            }
+
+            return
+        }
+
+        # The command text can span lines, so the warning names the cause alone.
+        if (($null -eq $failureRecord) -or ($null -ne $attemptCapture['FailureMessage'])) {
+            $cause = ' with exit code {0}' -f $attemptCapture['ExitCode']
+        } else {
+            $cause = ': ' + @("$failureText" -split '\r?\n')[0]
+        }
+
+        Write-Warning -Message ('Attempt {0} of {1} failed{2}. Retrying in {3} s.' -f $attempt, ($MaxRetries + 1), $cause, $RetryDelaySeconds)
+
+        if ($RetryDelaySeconds -gt 0) {
+            Start-Sleep -Milliseconds ([int] ($RetryDelaySeconds * 1000))
+        }
+
+        # A later attempt adds to the log instead of overwriting the earlier attempts.
+        if ($CoreParameters['LogPath']) {
+            $CoreParameters['AppendLog'] = $true
+        }
+
+        $attempt++
+    }
+}
+
+<#
+.SYNOPSIS
+    Builds the Invoke-NativeApplicationCore parameters a public function shares: the
+    execution options and the capture switches.
+#>
+function Get-CoreParameter {
+    param(
+        [Parameter()][HashTable] $BoundParameters,
+        [Parameter()][int] $MaxRetries,
+        [Parameter()][string] $RetryTriggerErrorPattern
+    )
+
+    $coreParameters = Get-ExecutionOption -BoundParameters $BoundParameters
+
+    # A retry pattern is matched against every STDERR line, so they must pass through
+    # the pipeline and be buffered.
+    $matchStdErr = ($MaxRetries -gt 0) -and (-not [string]::IsNullOrEmpty($RetryTriggerErrorPattern))
+
+    $coreParameters['CaptureLines'] = $matchStdErr -or (Test-CaptureRequested -BoundParameters $BoundParameters -ParameterName $script:LineCaptureParameters)
+    $coreParameters['CaptureStdErr'] = $matchStdErr -or (Test-CaptureRequested -BoundParameters $BoundParameters -ParameterName @('StdErrVariable', 'OutputVariable'))
+
+    return $coreParameters
+}
+
+<#
+.SYNOPSIS
+    Validates a -RetryTriggerErrorPattern value, throwing a readable error for an invalid
+    regular expression.
+#>
+function Test-RegexPattern {
+    param(
+        [Parameter()][string] $Pattern
+    )
+
+    try {
+        $null = New-Object -TypeName System.Text.RegularExpressions.Regex -ArgumentList $Pattern
+    } catch {
+        throw ('Invalid regular expression {0}: {1}' -f $Pattern, $_.Exception.InnerException.Message)
+    }
+
+    return $true
 }
 
 <#
@@ -811,6 +1034,10 @@ function Invoke-ElevatedScriptBlock {
         [Parameter()][string] $WorkingDirectory,
         [Parameter()][HashTable] $Environment,
         [Parameter()][string] $Priority,
+        [Parameter()][int[]] $AllowedExitCodes,
+        [Parameter()][int] $MaxRetries,
+        [Parameter()][string] $RetryTriggerErrorPattern,
+        [Parameter()][double] $RetryDelaySeconds,
         [Parameter()][HashTable] $Result
     )
 
@@ -827,6 +1054,10 @@ function Invoke-ElevatedScriptBlock {
             WorkingDirectory = $WorkingDirectory
             Environment      = $Environment
             Priority         = $Priority
+            AllowedExitCodes = $AllowedExitCodes
+            MaxRetries       = $MaxRetries
+            RetryTriggerErrorPattern = $RetryTriggerErrorPattern
+            RetryDelaySeconds = $RetryDelaySeconds
         }
         Export-Clixml -InputObject $request -LiteralPath $requestPath -ErrorAction Stop
 
