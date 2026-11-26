@@ -83,12 +83,51 @@ Describe 'execution options' {
     }
 
     Context 'Priority' {
-        It 'runs the native application at the given priority and restores its own' {
+        # The save, set and restore go through mocked helpers: the live class of this
+        # process can be changed at any moment from outside (a job object, a CPU
+        # governor lowering a busy tree), so reading it back is not deterministic.
+        It 'sets the given priority on its own process and restores the one it found' {
+            $script:priorityCalls = New-Object -TypeName System.Collections.Generic.List[string]
+            Mock -ModuleName Invoke-NativeApplication -CommandName Get-CurrentProcessPriority -MockWith { [System.Diagnostics.ProcessPriorityClass]::AboveNormal }
+            Mock -ModuleName Invoke-NativeApplication -CommandName Set-CurrentProcessPriority -MockWith { $script:priorityCalls.Add("$PriorityClass") }
+
+            Invoke-NativeApplication { cmd /c echo x } -Priority BelowNormal | Out-Null
+
+            @($script:priorityCalls) | Should -Be @('BelowNormal', 'AboveNormal')
+        }
+
+        It 'restores the priority it found when the exit code throws' {
+            $script:priorityCalls = New-Object -TypeName System.Collections.Generic.List[string]
+            Mock -ModuleName Invoke-NativeApplication -CommandName Get-CurrentProcessPriority -MockWith { [System.Diagnostics.ProcessPriorityClass]::Normal }
+            Mock -ModuleName Invoke-NativeApplication -CommandName Set-CurrentProcessPriority -MockWith { $script:priorityCalls.Add("$PriorityClass") }
+
+            { Invoke-NativeApplication { cmd /c "exit 1" } -Priority Idle } | Should -Throw '*exit code 1*'
+
+            @($script:priorityCalls) | Should -Be @('Idle', 'Normal')
+        }
+
+        It 'does not touch the priority without -Priority' {
+            Mock -ModuleName Invoke-NativeApplication -CommandName Get-CurrentProcessPriority -MockWith { [System.Diagnostics.ProcessPriorityClass]::Normal }
+            Mock -ModuleName Invoke-NativeApplication -CommandName Set-CurrentProcessPriority -MockWith { }
+
+            Invoke-NativeApplication { cmd /c echo x } | Out-Null
+
+            Should -Invoke -ModuleName Invoke-NativeApplication -CommandName Set-CurrentProcessPriority -Times 0 -Exactly
+        }
+
+        # The real inheritance. Something outside may lower the tree further while the
+        # child starts (seconds under load), never raise it, so the child is asserted to
+        # run at the given class or below. The child prints a marker line, because a
+        # loaded host can add lines of its own around it.
+        It 'runs the native application at the given priority or below' {
             $hostPath = (Get-Process -Id $PID).Path
-            $before = [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass
-            $result = @(Invoke-NativeApplication { param($HostPath) & $HostPath -NoProfile -NonInteractive -Command '[System.Diagnostics.Process]::GetCurrentProcess().PriorityClass.ToString()' } -ArgumentList @{ HostPath = $hostPath } -Priority BelowNormal)
-            $result[-1].ToString() | Should -Be 'BelowNormal'
-            [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass | Should -Be $before
+            $command = '"CHILD-PRIORITY=" + [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass'
+            $result = @(Invoke-NativeApplication { param($HostPath, $Command) & $HostPath -NoProfile -NonInteractive -Command $Command } -ArgumentList @{ HostPath = $hostPath; Command = $command } -Priority BelowNormal)
+            $lines = @($result | ForEach-Object -Process { $_.ToString() })
+            $because = "the child printed:$([Environment]::NewLine)$($lines -join [Environment]::NewLine)"
+            $marker = @($lines | Where-Object -FilterScript { $_ -like 'CHILD-PRIORITY=*' })
+            $marker | Should -HaveCount 1 -Because $because
+            $marker[0].Substring('CHILD-PRIORITY='.Length) | Should -BeIn @('BelowNormal', 'Idle') -Because $because
         }
 
         It 'rejects a priority that a child would not inherit' {

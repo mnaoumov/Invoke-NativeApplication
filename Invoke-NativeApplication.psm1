@@ -567,9 +567,8 @@ function Invoke-NativeApplicationCore {
             }
 
             if ($Priority) {
-                $currentProcess = [System.Diagnostics.Process]::GetCurrentProcess()
-                $savedPriority = $currentProcess.PriorityClass
-                $currentProcess.PriorityClass = [System.Diagnostics.ProcessPriorityClass] $Priority
+                $savedPriority = Get-CurrentProcessPriority
+                Set-CurrentProcessPriority -PriorityClass ([System.Diagnostics.ProcessPriorityClass] $Priority)
             }
         }
 
@@ -676,7 +675,7 @@ function Invoke-NativeApplicationCore {
         $stopwatch.Stop()
 
         if ($null -ne $savedPriority) {
-            [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = $savedPriority
+            Set-CurrentProcessPriority -PriorityClass $savedPriority
         }
 
         if ($null -ne $savedEnvironment) {
@@ -993,6 +992,30 @@ function Test-IsWindows {
 function Test-IsElevated {
     $principal = New-Object -TypeName System.Security.Principal.WindowsPrincipal -ArgumentList ([System.Security.Principal.WindowsIdentity]::GetCurrent())
     return $principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+<#
+.SYNOPSIS
+    Reads the priority class of the PowerShell process itself.
+.DESCRIPTION
+    A separate function so tests can mock it: the live class can be changed at any
+    moment by something outside, such as a job object or a scheduler.
+#>
+function Get-CurrentProcessPriority {
+    return [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass
+}
+
+<#
+.SYNOPSIS
+    Sets the priority class of the PowerShell process itself, which its Windows
+    children inherit.
+#>
+function Set-CurrentProcessPriority {
+    param(
+        [Parameter()][System.Diagnostics.ProcessPriorityClass] $PriorityClass
+    )
+
+    [System.Diagnostics.Process]::GetCurrentProcess().PriorityClass = $PriorityClass
 }
 
 <#
